@@ -1,0 +1,6 @@
+.direnv
+.envrc
+__pycache__
+bin/
+lib64
+.venv
