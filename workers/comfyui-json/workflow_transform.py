@@ -1,8 +1,11 @@
 """
 Transform app request format to Vast /generate/sync format.
+Aligns with RunPod serverless: client sends workflow + S3 refs, worker downloads,
+injects base64, patches, forwards to backend for execution, watermarking, S3 upload.
 
-Accepts: {workflow, input_images, user_id, generation_id, ...}
-Produces: {request_id, workflow_json, s3: {...}} for API wrapper.
+Accepts: {workflow, input_images, user_id, generation_id, watermark_enabled?, watermark_filename?, ...}
+Produces: {request_id, workflow_json, run_subdir, user_id, generation_id,
+          watermark_enabled, watermark_filename, timeout, s3?: {...}} for backend.
 """
 
 import base64
@@ -159,10 +162,16 @@ def transform_app_to_vast(payload: dict) -> dict:
             "bucket_name": s3_cfg["bucket"],
             "region": s3_cfg["region"],
         }
-    return {
-        "input": {
-            "request_id": request_id,
-            "workflow_json": patched,
-            "s3": s3_block,
-        }
+    out_input: dict = {
+        "request_id": request_id,
+        "workflow_json": patched,
+        "run_subdir": run_subdir,
+        "user_id": user_id,
+        "generation_id": generation_id,
+        "timeout": int(job_input.get("timeout", 600)),
+        "watermark_enabled": bool(job_input.get("watermark_enabled", True)),
+        "watermark_filename": (job_input.get("watermark_filename") or "").strip() or None,
     }
+    if s3_block:
+        out_input["s3"] = s3_block
+    return {"input": out_input}

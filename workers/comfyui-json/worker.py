@@ -31,14 +31,15 @@ MODEL_ERROR_LOG_MSGS = [
 
 
 def _get_benchmark_workflow_path() -> Path | None:
-    """Resolve benchmark workflow path: misc/benchmark.json (Vast convention) > VAST_BENCHMARK_WORKFLOW_PATH."""
-    # Prefer workers/comfyui-json/misc/benchmark.json (Vast doc: custom benchmark in fork)
-    misc_path = Path(__file__).resolve().parent / "misc" / "benchmark.json"
-    if misc_path.is_file():
-        return misc_path
+    """Resolve benchmark workflow path: VAST_BENCHMARK_WORKFLOW_PATH (when set) > misc/benchmark.json."""
+    # When template sets VAST_BENCHMARK_WORKFLOW_PATH (e.g. /app/vast/benchmarks/footjob_5sec_api.json),
+    # use that for API-format workflows. Else fall back to fork's misc/benchmark.json.
     env_path = os.getenv("VAST_BENCHMARK_WORKFLOW_PATH", "").strip()
     if env_path and Path(env_path).is_file():
         return Path(env_path)
+    misc_path = Path(__file__).resolve().parent / "misc" / "benchmark.json"
+    if misc_path.is_file():
+        return misc_path
     return None
 
 
