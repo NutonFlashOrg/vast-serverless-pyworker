@@ -44,7 +44,8 @@ def _get_benchmark_workflow_path() -> Path | None:
 
 
 def _get_benchmark_payload() -> dict:
-    """Generate benchmark payload (workflow + optional S3 input image)."""
+    """Generate benchmark payload. App format is transformed to workflow_json so backend receives
+    the same format as production (benchmark bypasses request_parser, so we transform here)."""
     import json
 
     path = _get_benchmark_workflow_path()
@@ -53,7 +54,6 @@ def _get_benchmark_payload() -> dict:
     with open(path, encoding="utf-8") as f:
         workflow = json.load(f)
 
-    # Transform app format for benchmark (same as production requests)
     if "workflow" in workflow:
         workflow = workflow["workflow"]
     input_images: list[dict] = []
@@ -61,7 +61,9 @@ def _get_benchmark_payload() -> dict:
     key = (os.getenv("BENCHMARK_IMAGE_KEY") or "").strip()
     if bucket and key:
         input_images.append({"bucket": bucket, "key": key})
-    return {
+
+    # App format; transform to workflow_json so backend receives correct format
+    app_payload = {
         "input": {
             "workflow": workflow,
             "user_id": "bench",
@@ -71,6 +73,8 @@ def _get_benchmark_payload() -> dict:
             "watermark_enabled": False,
         }
     }
+    from .workflow_transform import transform_app_to_vast
+    return transform_app_to_vast(app_payload)
 
 
 def _fallback_benchmark_payload() -> dict:
