@@ -5,6 +5,7 @@ Accepts app format: {workflow, input_images, user_id, generation_id, ...}
 Transforms to Vast format and forwards to API wrapper.
 """
 
+import logging
 import os
 import random
 import sys
@@ -12,6 +13,8 @@ import uuid
 from pathlib import Path
 
 from vastai import BenchmarkConfig, HandlerConfig, LogActionConfig, Worker, WorkerConfig
+
+_log = logging.getLogger("comfyui-json")
 
 # API wrapper config (our backend on 8189; stock ComfyUI uses 18288)
 MODEL_SERVER_URL = os.getenv("MODEL_SERVER_URL", "http://127.0.0.1")
@@ -31,15 +34,23 @@ MODEL_ERROR_LOG_MSGS = [
 
 
 def _get_benchmark_workflow_path() -> Path | None:
-    """Resolve benchmark workflow path: VAST_BENCHMARK_WORKFLOW_PATH (when set) > misc/benchmark.json."""
-    # When template sets VAST_BENCHMARK_WORKFLOW_PATH (e.g. /app/vast/benchmarks/footjob_5sec_api.json),
-    # use that for API-format workflows. Else fall back to fork's misc/benchmark.json.
+    """Resolve benchmark workflow path: VAST_BENCHMARK_WORKFLOW_PATH (when set + exists) > misc/benchmark.json."""
     env_path = os.getenv("VAST_BENCHMARK_WORKFLOW_PATH", "").strip()
-    if env_path and Path(env_path).is_file():
-        return Path(env_path)
+    if env_path:
+        p = Path(env_path)
+        if p.is_file():
+            _log.info("Benchmark workflow: VAST_BENCHMARK_WORKFLOW_PATH=%s (using)", env_path)
+            return p
+        _log.warning(
+            "VAST_BENCHMARK_WORKFLOW_PATH=%s not found (exists=%s), falling back to misc/benchmark.json",
+            env_path,
+            p.exists(),
+        )
     misc_path = Path(__file__).resolve().parent / "misc" / "benchmark.json"
     if misc_path.is_file():
+        _log.info("Benchmark workflow: misc/benchmark.json (using)")
         return misc_path
+    _log.warning("No benchmark workflow found (env path missing, misc/benchmark.json absent)")
     return None
 
 
