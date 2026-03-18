@@ -24,6 +24,7 @@ MODEL_SERVER_URL = os.getenv("MODEL_SERVER_URL", "http://127.0.0.1")
 MODEL_SERVER_PORT = int(os.getenv("MODEL_SERVER_PORT", "8189"))
 MODEL_LOG_FILE = os.getenv("MODEL_LOG_FILE", "/app/logs/backend.log")
 MODEL_HEALTHCHECK_ENDPOINT = os.getenv("MODEL_HEALTHCHECK_ENDPOINT", "/health")
+BENCHMARK_RUNS = int(os.getenv("BENCHMARK_RUNS", "4"))
 
 # Custom backend writes "Backend ready"; stock uses "To see the GUI go to: "
 MODEL_LOAD_LOG_MSG = ["Backend ready"]
@@ -145,7 +146,7 @@ worker_config = WorkerConfig(
             request_parser=request_parser,
             benchmark_config=BenchmarkConfig(
                 generator=_get_benchmark_payload,
-                runs=4,
+                runs=BENCHMARK_RUNS,
                 concurrency=1,
             ),
         ),

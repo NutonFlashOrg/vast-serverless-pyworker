@@ -21,4 +21,5 @@ Set in Vast template env:
 - `MODEL_SERVER_URL`, `MODEL_SERVER_PORT` — API wrapper address (default 18288)
 - `S3_BUCKET_NAME` or `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_ENDPOINT_URL`, `S3_REGION` — for input_images download
 - `VAST_BENCHMARK_WORKFLOW_PATH` — path to benchmark workflow JSON
+- `BENCHMARK_RUNS` — number of benchmark iterations (default 4). Set to 1 when testing standalone to reduce startup time.
 - `BENCHMARK_IMAGE_BUCKET`, `BENCHMARK_IMAGE_KEY` — for I2V benchmark: upload image to S3, e.g. `benchmarks/benchmark_source.jpg`. Run `upload_benchmark_image.sh` in comfy-vast-serverless.
