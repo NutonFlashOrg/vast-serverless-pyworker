@@ -110,7 +110,9 @@ def _patch_workflow(
     img_by_title = {t: p for t, p in downloaded_images if t}
     img_no_title = [p for t, p in downloaded_images if not t]
     for nid, ntitle, node in etn_nodes:
-        local = img_by_title.get(ntitle) if ntitle else (img_no_title.pop(0) if img_no_title else None)
+        local = img_by_title.get(ntitle) if ntitle else None
+        if local is None and img_no_title:
+            local = img_no_title.pop(0)
         if local and local.exists():
             b64 = base64.b64encode(local.read_bytes()).decode("utf-8")
             node.setdefault("inputs", {})["image"] = b64
