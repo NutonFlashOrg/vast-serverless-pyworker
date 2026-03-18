@@ -13,13 +13,14 @@ from pathlib import Path
 
 from vastai import BenchmarkConfig, HandlerConfig, LogActionConfig, Worker, WorkerConfig
 
-# API wrapper config (Vast template default; override via env)
+# API wrapper config (our backend on 8189; stock ComfyUI uses 18288)
 MODEL_SERVER_URL = os.getenv("MODEL_SERVER_URL", "http://127.0.0.1")
-MODEL_SERVER_PORT = int(os.getenv("MODEL_SERVER_PORT", "18288"))
-MODEL_LOG_FILE = os.getenv("MODEL_LOG_FILE", "/var/log/portal/comfyui.log")
+MODEL_SERVER_PORT = int(os.getenv("MODEL_SERVER_PORT", "8189"))
+MODEL_LOG_FILE = os.getenv("MODEL_LOG_FILE", "/app/logs/backend.log")
 MODEL_HEALTHCHECK_ENDPOINT = os.getenv("MODEL_HEALTHCHECK_ENDPOINT", "/health")
 
-MODEL_LOAD_LOG_MSG = ["To see the GUI go to: ", '"message":"Downloading']
+# Custom backend writes "Backend ready"; stock uses "To see the GUI go to: "
+MODEL_LOAD_LOG_MSG = ["Backend ready"]
 MODEL_ERROR_LOG_MSGS = [
     "MetadataIncompleteBuffer",
     "Value not in list: ",
