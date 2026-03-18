@@ -14,6 +14,9 @@ from pathlib import Path
 
 from vastai import BenchmarkConfig, HandlerConfig, LogActionConfig, Worker, WorkerConfig
 
+for _name in ("botocore", "boto3", "s3transfer", "urllib3"):
+    logging.getLogger(_name).setLevel(logging.WARNING)
+
 _log = logging.getLogger("comfyui-json")
 
 # API wrapper config (our backend on 8189; stock ComfyUI uses 18288)
@@ -72,6 +75,18 @@ def _get_benchmark_payload() -> dict:
     key = (os.getenv("BENCHMARK_IMAGE_KEY") or "").strip()
     if bucket and key:
         input_images.append({"bucket": bucket, "key": key})
+
+    # Randomize seed to avoid ComfyUI cache reuse and produce realistic benchmark timings
+    for node in workflow.values() if isinstance(workflow, dict) else []:
+        if (
+            isinstance(node, dict)
+            and node.get("class_type") == "PrimitiveInt"
+            and (node.get("_meta") or {}).get("title") == "Seed"
+        ):
+            node.setdefault("inputs", {})["value"] = random.randint(
+                -(2**63), 2**63 - 1
+            )
+            break
 
     # App format; transform to workflow_json so backend receives correct format
     app_payload = {
