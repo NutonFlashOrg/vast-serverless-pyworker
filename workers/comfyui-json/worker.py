@@ -9,6 +9,7 @@ import os
 import random
 import sys
 import uuid
+from pathlib import Path
 
 from vastai import BenchmarkConfig, HandlerConfig, LogActionConfig, Worker, WorkerConfig
 
@@ -28,25 +29,36 @@ MODEL_ERROR_LOG_MSGS = [
 ]
 
 
+def _get_benchmark_workflow_path() -> Path | None:
+    """Resolve benchmark workflow path: misc/benchmark.json (Vast convention) > VAST_BENCHMARK_WORKFLOW_PATH."""
+    # Prefer workers/comfyui-json/misc/benchmark.json (Vast doc: custom benchmark in fork)
+    misc_path = Path(__file__).resolve().parent / "misc" / "benchmark.json"
+    if misc_path.is_file():
+        return misc_path
+    env_path = os.getenv("VAST_BENCHMARK_WORKFLOW_PATH", "").strip()
+    if env_path and Path(env_path).is_file():
+        return Path(env_path)
+    return None
+
+
 def _get_benchmark_payload() -> dict:
     """Generate benchmark payload (workflow + optional S3 input image)."""
     import json
-    from pathlib import Path
 
-    path = os.getenv("VAST_BENCHMARK_WORKFLOW_PATH", "")
-    if not path or not Path(path).is_file():
+    path = _get_benchmark_workflow_path()
+    if path is None:
         return _fallback_benchmark_payload()
     with open(path, encoding="utf-8") as f:
         workflow = json.load(f)
+
+    # Transform app format for benchmark (same as production requests)
+    if "workflow" in workflow:
+        workflow = workflow["workflow"]
     input_images: list[dict] = []
     bucket = os.getenv("BENCHMARK_IMAGE_BUCKET") or os.getenv("S3_BUCKET") or os.getenv("S3_BUCKET_NAME")
     key = (os.getenv("BENCHMARK_IMAGE_KEY") or "").strip()
-    title = (os.getenv("BENCHMARK_IMAGE_TITLE") or "").strip()
     if bucket and key:
-        img = {"bucket": bucket, "key": key}
-        if title:
-            img["title"] = title
-        input_images.append(img)
+        input_images.append({"bucket": bucket, "key": key})
     return {
         "input": {
             "workflow": workflow,
