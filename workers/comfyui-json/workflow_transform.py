@@ -14,9 +14,25 @@ import logging
 import os
 import re
 import uuid
+from io import BytesIO
 from pathlib import Path
 
 logger = logging.getLogger("workflow_transform")
+
+
+def _validate_base64_image(b64: str, node_id: str) -> None:
+    """Validate that base64 decodes to a loadable image. Raises RuntimeError if invalid."""
+    try:
+        raw = base64.b64decode(b64)
+        if not raw:
+            raise RuntimeError(f"ETN node {node_id}: base64 decodes to empty bytes")
+        from PIL import Image
+
+        Image.open(BytesIO(raw)).verify()
+    except Exception as e:
+        raise RuntimeError(
+            f"ETN node {node_id}: invalid image data (S3 download or format issue): {e}"
+        ) from e
 
 # S3: Vast uses S3_BUCKET_NAME; we also accept S3_BUCKET for compatibility
 def _get_s3_config() -> dict | None:
@@ -115,6 +131,7 @@ def _patch_workflow(
             local = img_no_title.pop(0)
         if local and local.exists():
             b64 = base64.b64encode(local.read_bytes()).decode("utf-8")
+            _validate_base64_image(b64, nid)
             node.setdefault("inputs", {})["image"] = b64
     if downloaded_images:
         for nid, _, node in etn_nodes:
