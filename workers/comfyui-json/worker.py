@@ -24,7 +24,7 @@ MODEL_SERVER_URL = os.getenv("MODEL_SERVER_URL", "http://127.0.0.1")
 MODEL_SERVER_PORT = int(os.getenv("MODEL_SERVER_PORT", "8189"))
 MODEL_LOG_FILE = os.getenv("MODEL_LOG_FILE", "/app/logs/backend.log")
 MODEL_HEALTHCHECK_ENDPOINT = os.getenv("MODEL_HEALTHCHECK_ENDPOINT", "/health")
-BENCHMARK_RUNS = int(os.getenv("BENCHMARK_RUNS", "4"))
+BENCHMARK_RUNS = int(os.getenv("BENCHMARK_RUNS", "1"))
 
 # Custom backend writes "Backend ready"; stock uses "To see the GUI go to: "
 MODEL_LOAD_LOG_MSG = ["Backend ready"]
@@ -38,23 +38,12 @@ MODEL_ERROR_LOG_MSGS = [
 
 
 def _get_benchmark_workflow_path() -> Path | None:
-    """Resolve benchmark workflow path: VAST_BENCHMARK_WORKFLOW_PATH (when set + exists) > misc/benchmark.json."""
-    env_path = os.getenv("VAST_BENCHMARK_WORKFLOW_PATH", "").strip()
-    if env_path:
-        p = Path(env_path)
-        if p.is_file():
-            _log.info("Benchmark workflow: VAST_BENCHMARK_WORKFLOW_PATH=%s (using)", env_path)
-            return p
-        _log.warning(
-            "VAST_BENCHMARK_WORKFLOW_PATH=%s not found (exists=%s), falling back to misc/benchmark.json",
-            env_path,
-            p.exists(),
-        )
+    """Resolve benchmark workflow path: misc/benchmark.json only."""
     misc_path = Path(__file__).resolve().parent / "misc" / "benchmark.json"
     if misc_path.is_file():
         _log.info("Benchmark workflow: misc/benchmark.json (using)")
         return misc_path
-    _log.warning("No benchmark workflow found (env path missing, misc/benchmark.json absent)")
+    _log.warning("No benchmark workflow found (misc/benchmark.json absent)")
     return None
 
 
