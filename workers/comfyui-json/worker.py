@@ -138,7 +138,11 @@ def _get_benchmark_payload() -> dict:
             "watermark_enabled": False,
         }
     }
-    from .workflow_transform import transform_app_to_vast
+    try:
+        from .workflow_transform import transform_app_to_vast
+    except ImportError:
+        # calibrate_workload_timing.py does ``import worker`` with comfyui-json on sys.path only
+        from workflow_transform import transform_app_to_vast
 
     return transform_app_to_vast(app_payload)
 
