@@ -1,0 +1,299 @@
+{
+  "94": {
+    "inputs": {
+      "filename_prefix": "ComfyUI",
+      "images": [
+        "117:102",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Save Image"
+    }
+  },
+  "126": {
+    "inputs": {
+      "image": ""
+    },
+    "class_type": "ETN_LoadImageBase64",
+    "_meta": {
+      "title": "Original Image"
+    }
+  },
+  "117:100": {
+    "inputs": {
+      "sampler_name": "euler"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "KSamplerSelect"
+    }
+  },
+  "117:101": {
+    "inputs": {
+      "noise": [
+        "117:103",
+        0
+      ],
+      "guider": [
+        "117:114",
+        0
+      ],
+      "sampler": [
+        "117:100",
+        0
+      ],
+      "sigmas": [
+        "117:115",
+        0
+      ],
+      "latent_image": [
+        "117:106",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "SamplerCustomAdvanced"
+    }
+  },
+  "117:102": {
+    "inputs": {
+      "samples": [
+        "117:101",
+        0
+      ],
+      "vae": [
+        "117:104",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "117:103": {
+    "inputs": {
+      "noise_seed": 497009166042410
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "RandomNoise"
+    }
+  },
+  "117:104": {
+    "inputs": {
+      "vae_name": "flux2-vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "117:106": {
+    "inputs": {
+      "width": [
+        "117:105",
+        0
+      ],
+      "height": [
+        "117:105",
+        1
+      ],
+      "batch_size": 1
+    },
+    "class_type": "EmptyFlux2LatentImage",
+    "_meta": {
+      "title": "Empty Flux 2 Latent"
+    }
+  },
+  "117:107": {
+    "inputs": {
+      "upscale_method": "nearest-exact",
+      "megapixels": 1,
+      "resolution_steps": 1,
+      "image": [
+        "126",
+        0
+      ]
+    },
+    "class_type": "ImageScaleToTotalPixels",
+    "_meta": {
+      "title": "ImageScaleToTotalPixels"
+    }
+  },
+  "117:110": {
+    "inputs": {
+      "clip_name": "qwen_3_8b_fp8mixed.safetensors",
+      "type": "flux2",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Load CLIP"
+    }
+  },
+  "117:111:76": {
+    "inputs": {
+      "conditioning": [
+        "117:113",
+        0
+      ],
+      "latent": [
+        "117:111:78",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "ReferenceLatent"
+    }
+  },
+  "117:111:78": {
+    "inputs": {
+      "pixels": [
+        "117:107",
+        0
+      ],
+      "vae": [
+        "117:104",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE Encode"
+    }
+  },
+  "117:111:77": {
+    "inputs": {
+      "conditioning": [
+        "117:112",
+        0
+      ],
+      "latent": [
+        "117:111:78",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "ReferenceLatent"
+    }
+  },
+  "117:112": {
+    "inputs": {
+      "text": "Nude.",
+      "clip": [
+        "117:110",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Positive Prompt)"
+    }
+  },
+  "117:113": {
+    "inputs": {
+      "text": "",
+      "clip": [
+        "117:110",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode ( Negative Prompt)"
+    }
+  },
+  "117:105": {
+    "inputs": {
+      "image": [
+        "117:107",
+        0
+      ]
+    },
+    "class_type": "GetImageSize",
+    "_meta": {
+      "title": "Get Image Size"
+    }
+  },
+  "117:116": {
+    "inputs": {
+      "unet_name": "flux-2-klein-9b-Q8_0.gguf"
+    },
+    "class_type": "UnetLoaderGGUF",
+    "_meta": {
+      "title": "Unet Loader (GGUF)"
+    }
+  },
+  "117:117": {
+    "inputs": {
+      "lora_name": "Flux Klein - NSFW v2.safetensors",
+      "strength_model": 1,
+      "model": [
+        "117:116",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "Load LoRA"
+    }
+  },
+  "117:115": {
+    "inputs": {
+      "steps": 4,
+      "width": [
+        "117:105",
+        0
+      ],
+      "height": [
+        "117:105",
+        1
+      ]
+    },
+    "class_type": "Flux2Scheduler",
+    "_meta": {
+      "title": "Flux2Scheduler"
+    }
+  },
+  "117:114": {
+    "inputs": {
+      "cfg": 1,
+      "model": [
+        "117:118",
+        0
+      ],
+      "positive": [
+        "117:111:77",
+        0
+      ],
+      "negative": [
+        "117:111:76",
+        0
+      ]
+    },
+    "class_type": "CFGGuider",
+    "_meta": {
+      "title": "CFGGuider"
+    }
+  },
+  "117:118": {
+    "inputs": {
+      "lora_name": "klein_slider_anatomy.safetensors",
+      "strength_model": -1,
+      "model": [
+        "117:117",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "Load LoRA"
+    }
+  }
+}

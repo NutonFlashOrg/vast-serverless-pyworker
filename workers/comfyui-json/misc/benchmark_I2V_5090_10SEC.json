@@ -1,0 +1,829 @@
+{
+  "8": {
+    "inputs": {
+      "samples": [
+        "90",
+        0
+      ],
+      "vae": [
+        "39",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "38": {
+    "inputs": {
+      "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "type": "wan",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Load CLIP"
+    }
+  },
+  "39": {
+    "inputs": {
+      "vae_name": "wan_2.1_vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "54": {
+    "inputs": {
+      "shift": 8,
+      "model": [
+        "83",
+        0
+      ]
+    },
+    "class_type": "ModelSamplingSD3",
+    "_meta": {
+      "title": "ModelSamplingSD3"
+    }
+  },
+  "55": {
+    "inputs": {
+      "shift": 8,
+      "model": [
+        "524",
+        0
+      ]
+    },
+    "class_type": "ModelSamplingSD3",
+    "_meta": {
+      "title": "ModelSamplingSD3"
+    }
+  },
+  "63": {
+    "inputs": {
+      "width": [
+        "206",
+        0
+      ],
+      "height": [
+        "208",
+        0
+      ],
+      "length": [
+        "109",
+        0
+      ],
+      "batch_size": 1,
+      "positive": [
+        "204",
+        0
+      ],
+      "negative": [
+        "197",
+        0
+      ],
+      "vae": [
+        "39",
+        0
+      ],
+      "start_image": [
+        "67",
+        0
+      ]
+    },
+    "class_type": "WanImageToVideo",
+    "_meta": {
+      "title": "WanImageToVideo"
+    }
+  },
+  "67": {
+    "inputs": {
+      "width": [
+        "206",
+        0
+      ],
+      "height": [
+        "208",
+        0
+      ],
+      "upscale_method": "nearest-exact",
+      "keep_proportion": "resize",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 1,
+      "device": "cpu",
+      "image": [
+        "514",
+        0
+      ]
+    },
+    "class_type": "ImageResizeKJv2",
+    "_meta": {
+      "title": "Resize Image v2"
+    }
+  },
+  "83": {
+    "inputs": {
+      "sage_attention": "auto",
+      "allow_compile": true,
+      "model": [
+        "246",
+        0
+      ]
+    },
+    "class_type": "PathchSageAttentionKJ",
+    "_meta": {
+      "title": "Patch Sage Attention KJ"
+    }
+  },
+  "85": {
+    "inputs": {
+      "sage_attention": "auto",
+      "allow_compile": true,
+      "model": [
+        "245",
+        0
+      ]
+    },
+    "class_type": "PathchSageAttentionKJ",
+    "_meta": {
+      "title": "Patch Sage Attention KJ"
+    }
+  },
+  "90": {
+    "inputs": {
+      "add_noise": "disable",
+      "noise_seed": [
+        "528",
+        0
+      ],
+      "steps": [
+        "229",
+        0
+      ],
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "start_at_step": 1,
+      "end_at_step": [
+        "229",
+        0
+      ],
+      "return_with_leftover_noise": "disable",
+      "model": [
+        "55",
+        0
+      ],
+      "positive": [
+        "63",
+        0
+      ],
+      "negative": [
+        "63",
+        1
+      ],
+      "latent_image": [
+        "227",
+        0
+      ]
+    },
+    "class_type": "KSamplerAdvanced",
+    "_meta": {
+      "title": "KSampler (Advanced)"
+    }
+  },
+  "109": {
+    "inputs": {
+      "value": 81
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Length For Each Sampler"
+    }
+  },
+  "147": {
+    "inputs": {
+      "width": [
+        "151",
+        1
+      ],
+      "height": [
+        "151",
+        2
+      ],
+      "length": [
+        "109",
+        0
+      ],
+      "batch_size": 1,
+      "positive": [
+        "202",
+        0
+      ],
+      "negative": [
+        "197",
+        0
+      ],
+      "vae": [
+        "39",
+        0
+      ],
+      "start_image": [
+        "148",
+        0
+      ]
+    },
+    "class_type": "WanImageToVideo",
+    "_meta": {
+      "title": "WanImageToVideo"
+    }
+  },
+  "148": {
+    "inputs": {
+      "width": [
+        "151",
+        1
+      ],
+      "height": [
+        "151",
+        2
+      ],
+      "upscale_method": "nearest-exact",
+      "keep_proportion": "resize",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 1,
+      "device": "cpu",
+      "image": [
+        "166",
+        0
+      ]
+    },
+    "class_type": "ImageResizeKJv2",
+    "_meta": {
+      "title": "Resize Image v2"
+    }
+  },
+  "151": {
+    "inputs": {
+      "image": [
+        "177",
+        2
+      ]
+    },
+    "class_type": "GetImageSizeAndCount",
+    "_meta": {
+      "title": "Get Image Size & Count"
+    }
+  },
+  "152": {
+    "inputs": {
+      "expression": "(a-1)",
+      "a": [
+        "151",
+        3
+      ]
+    },
+    "class_type": "MathExpression|pysssss",
+    "_meta": {
+      "title": "Math Expression 🐍"
+    }
+  },
+  "153": {
+    "inputs": {
+      "value": 160
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Total Frame Lengths"
+    }
+  },
+  "158": {
+    "inputs": {
+      "samples": [
+        "240",
+        0
+      ],
+      "vae": [
+        "39",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "166": {
+    "inputs": {
+      "start_index": [
+        "152",
+        0
+      ],
+      "num_frames": 1,
+      "images": [
+        "151",
+        0
+      ]
+    },
+    "class_type": "GetImageRangeFromBatch",
+    "_meta": {
+      "title": "Get Image or Mask Range From Batch"
+    }
+  },
+  "169": {
+    "inputs": {
+      "inputcount": 2,
+      "Update inputs": null,
+      "image_1": [
+        "177",
+        2
+      ],
+      "image_2": [
+        "171",
+        0
+      ]
+    },
+    "class_type": "ImageBatchMulti",
+    "_meta": {
+      "title": "Image Batch Multi"
+    }
+  },
+  "170": {
+    "inputs": {
+      "flow": [
+        "177",
+        0
+      ],
+      "initial_value1": [
+        "169",
+        0
+      ]
+    },
+    "class_type": "easy forLoopEnd",
+    "_meta": {
+      "title": "For Loop End"
+    }
+  },
+  "171": {
+    "inputs": {
+      "batch_index": 1,
+      "length": [
+        "176",
+        0
+      ],
+      "image": [
+        "158",
+        0
+      ]
+    },
+    "class_type": "ImageFromBatch",
+    "_meta": {
+      "title": "ImageFromBatch"
+    }
+  },
+  "176": {
+    "inputs": {
+      "expression": "(a-1)",
+      "a": [
+        "109",
+        0
+      ]
+    },
+    "class_type": "MathExpression|pysssss",
+    "_meta": {
+      "title": "Math Expression 🐍"
+    }
+  },
+  "177": {
+    "inputs": {
+      "total": [
+        "181",
+        0
+      ],
+      "initial_value1": [
+        "8",
+        0
+      ]
+    },
+    "class_type": "easy forLoopStart",
+    "_meta": {
+      "title": "For Loop Start"
+    }
+  },
+  "179": {
+    "inputs": {
+      "images": [
+        "8",
+        0
+      ]
+    },
+    "class_type": "VHS_GetImageCount",
+    "_meta": {
+      "title": "Get Image Count 🎥🅥🅗🅢"
+    }
+  },
+  "181": {
+    "inputs": {
+      "expression": "ceil((a-b)/c)",
+      "a": [
+        "153",
+        0
+      ],
+      "b": [
+        "179",
+        0
+      ],
+      "c": [
+        "109",
+        0
+      ]
+    },
+    "class_type": "MathExpression|pysssss",
+    "_meta": {
+      "title": "Math Expression 🐍"
+    }
+  },
+  "184": {
+    "inputs": {
+      "text": "2",
+      "anything": [
+        "181",
+        0
+      ]
+    },
+    "class_type": "easy showAnything",
+    "_meta": {
+      "title": "Number Of Extend"
+    }
+  },
+  "188": {
+    "inputs": {
+      "frame_rate": 32,
+      "loop_count": 0,
+      "filename_prefix": "Wan_I2V_long\\Wan_i2v_stitched",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": false,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": true,
+      "images": [
+        "525",
+        0
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Video Combine 🎥🅥🅗🅢"
+    }
+  },
+  "193": {
+    "inputs": {
+      "text": "0",
+      "anything": [
+        "177",
+        1
+      ]
+    },
+    "class_type": "easy showAnything",
+    "_meta": {
+      "title": "Current Loop"
+    }
+  },
+  "197": {
+    "inputs": {
+      "text": "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走",
+      "clip": [
+        "38",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "201": {
+    "inputs": {
+      "index": [
+        "177",
+        1
+      ],
+      "list_input": [
+        "203",
+        0
+      ]
+    },
+    "class_type": "StringFromList",
+    "_meta": {
+      "title": "String From List"
+    }
+  },
+  "202": {
+    "inputs": {
+      "text": [
+        "201",
+        0
+      ],
+      "clip": [
+        "38",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Prompt 01"
+    }
+  },
+  "203": {
+    "inputs": {
+      "Multi_prompts": [
+        "213",
+        0
+      ],
+      "prefix": "",
+      "suffix": "Cinematic scenes, high quality photography, photorealistic"
+    },
+    "class_type": "CreaPrompt List",
+    "_meta": {
+      "title": "CreaPrompt Multi Prompts"
+    }
+  },
+  "204": {
+    "inputs": {
+      "text": "Two womens pose for the camera. The scene immediately transitions to a new one. In the new scene two woman, the first woman is now completely naked and sits on top of a penis, while the penis enters her vagina. The second woman, naked, is nearby, touching the first woman's breasts. The first woman leans back while the man thrusts his penis deeply into the woman's vagina several times. The movement is rapid. The man holds onto her legs with his hands. The scene is a low-angle shot. The women exchange glances and laugh.",
+      "clip": [
+        "38",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "206": {
+    "inputs": {
+      "value": 128
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Width"
+    }
+  },
+  "208": {
+    "inputs": {
+      "value": 192
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Height"
+    }
+  },
+  "213": {
+    "inputs": {
+      "value": "They continue having sex. The woman riding the penis moans in orgasm. Breasts shaking and movements."
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "String (Multiline)"
+    }
+  },
+  "227": {
+    "inputs": {
+      "add_noise": "enable",
+      "noise_seed": [
+        "528",
+        0
+      ],
+      "steps": [
+        "229",
+        0
+      ],
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "start_at_step": 0,
+      "end_at_step": 1,
+      "return_with_leftover_noise": "enable",
+      "model": [
+        "522",
+        0
+      ],
+      "positive": [
+        "63",
+        0
+      ],
+      "negative": [
+        "63",
+        1
+      ],
+      "latent_image": [
+        "63",
+        2
+      ]
+    },
+    "class_type": "KSamplerAdvanced",
+    "_meta": {
+      "title": "KSampler (Advanced)"
+    }
+  },
+  "229": {
+    "inputs": {
+      "value": 2
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Steps"
+    }
+  },
+  "238": {
+    "inputs": {
+      "add_noise": "enable",
+      "noise_seed": [
+        "527",
+        0
+      ],
+      "steps": [
+        "244",
+        0
+      ],
+      "cfg": 1,
+      "sampler_name": "uni_pc",
+      "scheduler": "simple",
+      "start_at_step": 0,
+      "end_at_step": 1,
+      "return_with_leftover_noise": "enable",
+      "model": [
+        "522",
+        0
+      ],
+      "positive": [
+        "147",
+        0
+      ],
+      "negative": [
+        "147",
+        1
+      ],
+      "latent_image": [
+        "147",
+        2
+      ]
+    },
+    "class_type": "KSamplerAdvanced",
+    "_meta": {
+      "title": "KSampler (Advanced)"
+    }
+  },
+  "240": {
+    "inputs": {
+      "add_noise": "disable",
+      "noise_seed": [
+        "527",
+        0
+      ],
+      "steps": [
+        "244",
+        0
+      ],
+      "cfg": 1,
+      "sampler_name": "uni_pc",
+      "scheduler": "simple",
+      "start_at_step": 1,
+      "end_at_step": [
+        "244",
+        0
+      ],
+      "return_with_leftover_noise": "disable",
+      "model": [
+        "55",
+        0
+      ],
+      "positive": [
+        "147",
+        0
+      ],
+      "negative": [
+        "147",
+        1
+      ],
+      "latent_image": [
+        "238",
+        0
+      ]
+    },
+    "class_type": "KSamplerAdvanced",
+    "_meta": {
+      "title": "KSampler (Advanced)"
+    }
+  },
+  "244": {
+    "inputs": {
+      "value": 2
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Steps"
+    }
+  },
+  "245": {
+    "inputs": {
+      "unet_name": "DasiwaWAN22I2V14BTastysinV8_q8Low.gguf"
+    },
+    "class_type": "UnetLoaderGGUF",
+    "_meta": {
+      "title": "Unet Loader (GGUF)"
+    }
+  },
+  "246": {
+    "inputs": {
+      "unet_name": "DasiwaWAN22I2V14BTastysinV8_q8High.gguf"
+    },
+    "class_type": "UnetLoaderGGUF",
+    "_meta": {
+      "title": "Unet Loader (GGUF)"
+    }
+  },
+  "514": {
+    "inputs": {
+      "image": ""
+    },
+    "class_type": "ETN_LoadImageBase64",
+    "_meta": {
+      "title": "Load Image (Base64)"
+    }
+  },
+  "520": {
+    "inputs": {},
+    "class_type": "FancyTimerNode",
+    "_meta": {
+      "title": "Execution Timer"
+    }
+  },
+  "522": {
+    "inputs": {
+      "lora_name": "W22_HN_i2v_POV_Missionary_Insertion_v1.safetensors",
+      "strength_model": 0.7,
+      "model": [
+        "54",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "Load LoRA"
+    }
+  },
+  "524": {
+    "inputs": {
+      "lora_name": "W22_LN_i2v_POV_Missionary_Insertion_v1.safetensors",
+      "strength_model": 0.7,
+      "model": [
+        "85",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "Load LoRA"
+    }
+  },
+  "525": {
+    "inputs": {
+      "ckpt_name": "rife47",
+      "multiplier": 2,
+      "ensemble": false,
+      "images": [
+        "170",
+        0
+      ]
+    },
+    "class_type": "FL_RIFE",
+    "_meta": {
+      "title": "FL RIFE Frame Interpolation"
+    }
+  },
+  "527": {
+    "inputs": {
+      "value": 706486008406504
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Seed"
+    }
+  },
+  "528": {
+    "inputs": {
+      "value": 522369424380311
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Seed"
+    }
+  }
+}

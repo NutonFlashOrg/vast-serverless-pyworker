@@ -16,7 +16,9 @@ ENDPOINT_NAME = "my-comfyui-endpoint"
 DEFAULT_WIDTH = 512
 DEFAULT_HEIGHT = 512
 DEFAULT_STEPS = 20
-COST = 100  # Fixed cost for ComfyUI requests
+# Demo-only: not lane-specific. Real apps use per-lane VAST_REQUEST_COST_* (bot) and
+# VAST_WORKLOAD_UNITS / workload_calculator (PyWorker); see comfy-vast-serverless/docs/VAST_BENCHMARK_LANES_AND_BOT_COST.md
+COST = 100
 
 # Optional S3 Configuration (from environment variables)
 S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL")
