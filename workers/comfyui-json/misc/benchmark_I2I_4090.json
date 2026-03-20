@@ -112,7 +112,7 @@
   "117:107": {
     "inputs": {
       "upscale_method": "nearest-exact",
-      "megapixels": 1,
+      "megapixels": 0.25,
       "resolution_steps": 1,
       "image": [
         "126",

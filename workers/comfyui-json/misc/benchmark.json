@@ -1,7 +1,7 @@
 {
   "21": {
     "inputs": {
-      "value": 256
+      "value": 128
     },
     "class_type": "PrimitiveInt",
     "_meta": {
@@ -69,7 +69,7 @@
   },
   "28": {
     "inputs": {
-      "value": 384
+      "value": 192
     },
     "class_type": "PrimitiveInt",
     "_meta": {

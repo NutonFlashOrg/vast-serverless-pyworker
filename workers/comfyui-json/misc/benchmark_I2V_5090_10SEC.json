@@ -568,7 +568,7 @@
   },
   "206": {
     "inputs": {
-      "value": 128
+      "value": 64
     },
     "class_type": "PrimitiveInt",
     "_meta": {
@@ -577,7 +577,7 @@
   },
   "208": {
     "inputs": {
-      "value": 192
+      "value": 96
     },
     "class_type": "PrimitiveInt",
     "_meta": {
