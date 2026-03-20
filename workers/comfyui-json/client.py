@@ -16,9 +16,25 @@ ENDPOINT_NAME = "my-comfyui-endpoint"
 DEFAULT_WIDTH = 512
 DEFAULT_HEIGHT = 512
 DEFAULT_STEPS = 20
-# Demo-only: not lane-specific. Real apps use per-lane VAST_REQUEST_COST_* (bot) and
-# VAST_WORKLOAD_UNITS / workload_calculator (PyWorker); see comfy-vast-serverless/docs/VAST_BENCHMARK_LANES_AND_BOT_COST.md
-COST = 100
+
+
+def _demo_vast_request_cost() -> float:
+    """Demo SDK cost= for Vast scaling (not user credits). Required: VAST_DEMO_REQUEST_COST or VAST_WORKLOAD_UNITS."""
+    raw = (os.getenv("VAST_DEMO_REQUEST_COST") or "").strip()
+    if raw:
+        try:
+            return float(raw)
+        except ValueError as e:
+            raise ValueError(f"Invalid VAST_DEMO_REQUEST_COST={raw!r}") from e
+    wu = (os.getenv("VAST_WORKLOAD_UNITS") or "").strip()
+    if wu:
+        try:
+            return float(wu)
+        except ValueError as e:
+            raise ValueError(f"Invalid VAST_WORKLOAD_UNITS={wu!r}") from e
+    raise RuntimeError(
+        "Set VAST_DEMO_REQUEST_COST or VAST_WORKLOAD_UNITS for demo SDK cost= (no default)"
+    )
 
 # Optional S3 Configuration (from environment variables)
 S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL")
@@ -34,7 +50,11 @@ def get_s3_client():
     """Create and return an S3 client configured for the S3-compatible endpoint"""
     try:
         import boto3
-        from botocore.config import Config
+
+        try:
+            from .s3_boto_resilience import build_s3_boto_config
+        except ImportError:
+            from s3_boto_resilience import build_s3_boto_config
     except ImportError:
         log.error("boto3 is required for S3 uploads. Install with: pip install boto3")
         return None
@@ -49,7 +69,7 @@ def get_s3_client():
         endpoint_url=S3_ENDPOINT_URL,
         aws_access_key_id=S3_ACCESS_KEY_ID,
         aws_secret_access_key=S3_SECRET_ACCESS_KEY,
-        config=Config(signature_version="s3v4"),
+        config=build_s3_boto_config(signature_version="s3v4"),
     )
 
 
@@ -79,7 +99,9 @@ async def call_generate(
             },
         }
     }
-    return await endpoint.request("/generate/sync", payload, cost=COST)
+    return await endpoint.request(
+        "/generate/sync", payload, cost=_demo_vast_request_cost()
+    )
 
 
 async def call_generate_workflow(
@@ -96,7 +118,9 @@ async def call_generate_workflow(
             "workflow_json": workflow_json,
         }
     }
-    return await endpoint.request("/generate/sync", payload, cost=COST)
+    return await endpoint.request(
+        "/generate/sync", payload, cost=_demo_vast_request_cost()
+    )
 
 
 # ---------------------- Demo Class ----------------------
@@ -129,14 +153,21 @@ class APIDemo:
         """Upload a local file to S3 and return the S3 URL"""
         if not self.s3_client:
             return None
-        
+
         try:
-            self.s3_client.upload_file(
-                local_path,
-                S3_BUCKET_NAME,
-                s3_key,
-                ExtraArgs={"ContentType": "image/png"}
-            )
+            try:
+                from .s3_boto_resilience import S3_IO_SEM, upload_file_with_retry
+            except ImportError:
+                from s3_boto_resilience import S3_IO_SEM, upload_file_with_retry
+
+            with S3_IO_SEM:
+                upload_file_with_retry(
+                    self.s3_client,
+                    local_path,
+                    S3_BUCKET_NAME,
+                    s3_key,
+                    extra_args={"ContentType": "image/png"},
+                )
             s3_url = f"{S3_ENDPOINT_URL}/{S3_BUCKET_NAME}/{s3_key}"
             print(f"  ☁️  Uploaded to S3: {s3_key}")
             return s3_url
@@ -214,7 +245,7 @@ class APIDemo:
             if filename:
                 path = await self.save_image(worker_url, filename, f"comfy_{seed}.png")
                 if not path:
-                    print(f"❌ Failed to fetch image")
+                    print("❌ Failed to fetch image")
             else:
                 print("❌ No image in response")
         else:
@@ -251,7 +282,7 @@ class APIDemo:
             if filename:
                 path = await self.save_image(worker_url, filename, "workflow.png")
                 if not path:
-                    print(f"❌ Failed to fetch image")
+                    print("❌ Failed to fetch image")
             else:
                 print("❌ No image in response")
         else:

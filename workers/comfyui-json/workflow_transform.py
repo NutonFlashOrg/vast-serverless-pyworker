@@ -84,7 +84,19 @@ def _download_input_images(
 ) -> list[tuple[str, Path]]:
     """Download images from S3. Returns [(title, path), ...]."""
     import boto3
-    from botocore.config import Config
+
+    try:
+        from .s3_boto_resilience import (
+            S3_IO_SEM,
+            build_s3_boto_config,
+            download_file_with_retry,
+        )
+    except ImportError:
+        from s3_boto_resilience import (
+            S3_IO_SEM,
+            build_s3_boto_config,
+            download_file_with_retry,
+        )
 
     cfg = _get_s3_config()
     if not cfg:
@@ -95,7 +107,7 @@ def _download_input_images(
         aws_access_key_id=cfg["access_key_id"],
         aws_secret_access_key=cfg["secret_access_key"],
         region_name=cfg["region"],
-        config=Config(signature_version="s3v4", retries={"max_attempts": 5, "mode": "standard"}),
+        config=build_s3_boto_config(signature_version="s3v4"),
     )
     input_dir.mkdir(parents=True, exist_ok=True)
     results: list[tuple[str, Path]] = []
@@ -110,7 +122,8 @@ def _download_input_images(
         local_path = (input_dir / f"{safe_name}{ext}").resolve()
         if not str(local_path).startswith(str(input_dir.resolve())):
             raise RuntimeError("Invalid input path traversal")
-        client.download_file(bucket, key, str(local_path))
+        with S3_IO_SEM:
+            download_file_with_retry(client, bucket, key, str(local_path))
         logger.info("Downloaded %s/%s -> %s", bucket, key, local_path)
         results.append((title, local_path))
     return results
@@ -204,6 +217,9 @@ def transform_app_to_vast(payload: dict) -> dict:
         "watermark_enabled": bool(job_input.get("watermark_enabled", True)),
         "watermark_filename": (job_input.get("watermark_filename") or "").strip() or None,
     }
+    gl = (job_input.get("generation_lane") or "").strip()
+    if gl:
+        out_input["generation_lane"] = gl
     if s3_block:
         out_input["s3"] = s3_block
     return _merge_passthrough({"input": out_input}, payload)

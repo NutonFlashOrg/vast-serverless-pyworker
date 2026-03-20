@@ -14,6 +14,8 @@ Requires:
 
 Does not start PyWorker; imports workers/comfyui-json/worker.py for _get_benchmark_payload only
 (worker module must not call Worker.run() on import — see __main__ guard in worker.py).
+
+For several prod lanes vs one T_bench, use scripts/calibrate_vast_workload_multi_lane.py (--manifest).
 """
 
 from __future__ import annotations
