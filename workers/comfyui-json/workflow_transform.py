@@ -19,6 +19,19 @@ from pathlib import Path
 
 logger = logging.getLogger("workflow_transform")
 
+# Top-level keys the bot sends for backend timing (vastai-sdk replaces the whole body with
+# request_parser output; only these are forwarded to avoid leaking arbitrary client fields).
+_PASSTHROUGH_KEYS = ("_client_sent_at", "id")
+
+
+def _merge_passthrough(out: dict, payload: dict) -> dict:
+    """Copy timing/routing keys from the original client payload onto the parser output."""
+    merged = dict(out)
+    for k in _PASSTHROUGH_KEYS:
+        if k in payload:
+            merged[k] = payload[k]
+    return merged
+
 
 def _validate_base64_image(b64: str, node_id: str) -> None:
     """Validate that base64 decodes to a loadable image. Raises RuntimeError if invalid."""
@@ -155,10 +168,10 @@ def transform_app_to_vast(payload: dict) -> dict:
     """
     inp = payload.get("input", payload)
     if isinstance(inp, dict) and "workflow_json" in inp:
-        return payload
+        return _merge_passthrough(payload, payload)
     workflow = inp.get("workflow") if isinstance(inp, dict) else None
     if not isinstance(workflow, dict):
-        return payload
+        return _merge_passthrough(payload, payload)
     input_images = (inp.get("input_images") or []) if isinstance(inp, dict) else []
     user_id = str(inp.get("user_id") or "")
     generation_id = str(inp.get("generation_id") or "")
@@ -193,4 +206,4 @@ def transform_app_to_vast(payload: dict) -> dict:
     }
     if s3_block:
         out_input["s3"] = s3_block
-    return {"input": out_input}
+    return _merge_passthrough({"input": out_input}, payload)
