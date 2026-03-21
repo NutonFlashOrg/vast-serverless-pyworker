@@ -9,7 +9,7 @@ Multi-lane Vast workload calibration on ONE reference GPU.
 
 Manifest example (JSON file):
   {
-    "I2V_4090_5SEC": "/path/to/prod_5s_app.json",
+    "I2V_5090_5SEC": "/path/to/prod_5s_app.json",
     "I2V_5090_10SEC": "/path/to/prod_10s_app.json",
     "I2V_5090_15SEC": "/path/to/prod_15s_app.json"
   }

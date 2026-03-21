@@ -26,12 +26,13 @@ MODEL_LOG_FILE = os.getenv("MODEL_LOG_FILE", "/app/logs/backend.log")
 MODEL_HEALTHCHECK_ENDPOINT = os.getenv("MODEL_HEALTHCHECK_ENDPOINT", "/health")
 BENCHMARK_RUNS = int(os.getenv("BENCHMARK_RUNS", "1"))
 
-# Lane → default benchmark JSON under misc/ (set BENCHMARK_GENERATION_LANE per Vast template)
+# Template lane (BENCHMARK_GENERATION_LANE on Vast) → default benchmark JSON under misc/.
+# Bot/request workload uses generation_lane keys like I2I_4090, I2V_5090_5SEC (VAST_WORKLOAD_UNITS_<LANE>).
 _DEFAULT_BENCHMARK_FILES: dict[str, str] = {
     "I2I_4090": "benchmark_I2I_4090.json",
-    "I2V_4090_5SEC": "benchmark_I2V_4090_5SEC.json",
-    "I2V_5090_5SEC": "benchmark_I2V_4090_5SEC.json",
+    "I2V_5090_FREE": "benchmark_I2V_4090_5SEC.json",
     "I2V_5090_PAID": "benchmark_I2V_5090_15SEC.json",
+    "I2V_5090_5SEC": "benchmark_I2V_4090_5SEC.json",
     "I2V_5090_10SEC": "benchmark_I2V_5090_10SEC.json",
     "I2V_5090_15SEC": "benchmark_I2V_5090_15SEC.json",
 }
