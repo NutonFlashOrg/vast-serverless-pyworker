@@ -4,12 +4,12 @@ Vast runs `BenchmarkConfig` against one workflow per deployment. Pick the file w
 
 | Lane | Default file | Notes |
 |------|----------------|-------|
-| `I2I_4090` | `benchmark_I2I_4090.json` | Same graph as prod `workflows_api/images/nudify/nudify_api.json` (Flux 2 Klein). Input image from S3 (`BENCHMARK_IMAGE_*`). |
-| `I2V_4090_5SEC` | `benchmark_I2V_4090_5SEC.json` | Same graph as prod `3some_cowgirl_5sec_api.json`; **128×192**, **2** total WAN steps (KSampler 0→1, 1→2). |
+| `I2I_4090` | `benchmark_I2I_4090.json` | Same graph as prod `workflows_api/images/nudify/nudify_api.json` (Flux 2 Klein), tuned **lighter**: **0.5** megapixels scale, **10** scheduler steps. Input from S3 (`BENCHMARK_IMAGE_*`). |
+| `I2V_4090_5SEC` | `benchmark_I2V_4090_5SEC.json` | Same topology as prod `3some_cowgirl_5sec_api.json`; benchmark uses **96×144** spatial primitives and **5** WAN steps (heavier cold-start signal, target ~10–20s GPU class–dependent). |
 | `I2V_5090_5SEC` | `benchmark_I2V_4090_5SEC.json` | Same file as `I2V_4090_5SEC` (5090 free I2V template lane). |
 | `I2V_5090_PAID` | `benchmark_I2V_5090_15SEC.json` | Heaviest graph for unified paid I2V template (worker readiness / perf signal). |
-| `I2V_5090_10SEC` | `benchmark_I2V_5090_10SEC.json` | Same graph as prod `3some_cowgirl_10sec_api.json` (incl. Sage + extend loop); **128×192**, **2** steps per sampler pair. |
-| `I2V_5090_15SEC` | `benchmark_I2V_5090_15SEC.json` | Same graph as prod `3some_cowgirl_15sec_api.json`; **128×192**, **2** steps per sampler pair. |
+| `I2V_5090_10SEC` | `benchmark_I2V_5090_10SEC.json` | Same topology as prod `3some_cowgirl_10sec_api.json`; **96×144**, **5** steps per sampler pair (benchmark tuning). |
+| `I2V_5090_15SEC` | `benchmark_I2V_5090_15SEC.json` | Same topology as prod `3some_cowgirl_15sec_api.json`; **96×144**, **5** steps per sampler pair (benchmark tuning). |
 
 If `BENCHMARK_GENERATION_LANE` is unset or unknown, **`benchmark.json`** is used when present (legacy).
 

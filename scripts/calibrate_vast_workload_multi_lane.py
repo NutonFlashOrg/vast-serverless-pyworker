@@ -5,6 +5,7 @@ Multi-lane Vast workload calibration on ONE reference GPU.
 1) Runs one benchmark series (same as calibrate_workload_timing.py: env BENCHMARK_GENERATION_LANE, S3).
 2) For each lane in a manifest, runs a prod-shaped app-format JSON series (transform_app_to_vast).
 3) Prints W_lane = baseline * T_prod_p50 / T_bench_p50 and paste-ready VAST_WORKLOAD_UNITS_<LANE>.
+4) Echoes VAST_REQUEST_COST_<LANE>=... when CALIBRATION_REQUEST_COST_<LANE> or VAST_REQUEST_COST_<LANE> is set in the environment (no scaling; bot credits are separate from Vast load).
 
 Manifest example (JSON file):
   {
@@ -14,7 +15,8 @@ Manifest example (JSON file):
   }
 
 Each prod file: {"input": {"workflow": {...}, "user_id", "generation_id", "input_images", ...}}
-(bot-shaped). Optional: set "generation_lane" in input to match the manifest key (injected if missing).
+(bot-shaped). ``input_images`` may use ``{"from_env_benchmark_image": true, "title": "…"}``;
+resolved at run time from ``BENCHMARK_IMAGE_*`` / ``S3_*`` (same as PyWorker benchmark).
 
 Requires: backend on CALIBRATE_BACKEND_URL; same env as worker for benchmark + S3.
 """
@@ -150,6 +152,54 @@ def _normalize_lane(s: str) -> str:
     return (s or "").strip().upper().replace(" ", "_")
 
 
+def _hydrate_benchmark_input_images(inp: dict) -> None:
+    """Replace ``from_env_benchmark_image`` entries with real bucket/key from env."""
+    imgs = inp.get("input_images")
+    if not isinstance(imgs, list) or not imgs:
+        return
+    bucket = (
+        os.getenv("BENCHMARK_IMAGE_BUCKET")
+        or os.getenv("S3_BUCKET")
+        or os.getenv("S3_BUCKET_NAME")
+        or ""
+    ).strip()
+    key = (os.getenv("BENCHMARK_IMAGE_KEY") or "").strip()
+    out: list[dict] = []
+    for i, e in enumerate(imgs):
+        if not isinstance(e, dict):
+            out.append(e)
+            continue
+        if e.get("from_env_benchmark_image"):
+            if not bucket or not key:
+                raise RuntimeError(
+                    "Calibration JSON uses from_env_benchmark_image but BENCHMARK_IMAGE_KEY "
+                    "and S3 bucket (BENCHMARK_IMAGE_BUCKET or S3_BUCKET or S3_BUCKET_NAME) are not set"
+                )
+            ne = {"bucket": bucket, "key": key}
+            t = (e.get("title") or "").strip()
+            if t:
+                ne["title"] = t
+            out.append(ne)
+        else:
+            if not e.get("bucket") or not e.get("key"):
+                raise RuntimeError(
+                    f"input_images[{i}] missing bucket/key and not from_env_benchmark_image"
+                )
+            out.append(e)
+    inp["input_images"] = out
+
+
+def _request_cost_echo_value(lane: str) -> str | None:
+    """Prefer CALIBRATION_REQUEST_COST_<LANE>; else VAST_REQUEST_COST_<LANE>."""
+    cal = (os.getenv(f"CALIBRATION_REQUEST_COST_{lane}") or "").strip()
+    if cal:
+        return cal
+    vast = (os.getenv(f"VAST_REQUEST_COST_{lane}") or "").strip()
+    if vast:
+        return vast
+    return None
+
+
 def main() -> int:
     p = argparse.ArgumentParser(
         description="Multi-lane Vast workload: one T_bench, per-lane T_prod → VAST_WORKLOAD_UNITS_<LANE>"
@@ -257,6 +307,7 @@ def main() -> int:
             return 2
         inp = dict(inp)
         inp["generation_lane"] = lane
+        _hydrate_benchmark_input_images(inp)
         raw = {"input": inp}
 
         def build_prod(r=raw):
@@ -275,7 +326,11 @@ def main() -> int:
         p50 = float(_percentile(prod_times, 50))
         p80 = float(_percentile(prod_times, 80))
         w_lane = args.baseline * (p50 / b50)
-        per_lane[lane] = {"t_prod_p50": p50, "t_prod_p80": p80, "suggested_workload": w_lane}
+        per_lane[lane] = {
+            "t_prod_p50": p50,
+            "t_prod_p80": p80,
+            "suggested_workload": w_lane,
+        }
         suggested[lane] = w_lane
         print(
             f"T_prod {lane}: p50={p50:.2f}s p80={p80:.2f}s  →  "
@@ -286,6 +341,24 @@ def main() -> int:
     for lane in sorted(suggested.keys()):
         print(f"VAST_WORKLOAD_UNITS_{lane}={suggested[lane]:.1f}")
 
+    print(
+        "\n# Bot credits (echo from env when set; set VAST_REQUEST_COST_* in bot .env if absent)\n"
+    )
+    cost_echo: dict[str, str] = {}
+    missing_cost: list[str] = []
+    for lane in sorted(suggested.keys()):
+        val = _request_cost_echo_value(lane)
+        if val:
+            print(f"VAST_REQUEST_COST_{lane}={val}")
+            cost_echo[lane] = val
+        else:
+            missing_cost.append(lane)
+    if missing_cost:
+        print(
+            "# (no CALIBRATION_REQUEST_COST_* or VAST_REQUEST_COST_* for: "
+            f"{', '.join(missing_cost)})"
+        )
+
     summary = {
         "backend_url": args.backend_url,
         "runs": args.runs,
@@ -294,6 +367,7 @@ def main() -> int:
         "t_bench_seconds": {"p50": b50, "p80": b80},
         "lanes": per_lane,
         "vast_workload_units_suggested": {k: round(v, 2) for k, v in suggested.items()},
+        "vast_request_cost_echo": cost_echo,
     }
     print("\nJSON summary:", json.dumps(summary, indent=2))
     return 0

@@ -47,6 +47,7 @@ def _validate_base64_image(b64: str, node_id: str) -> None:
             f"ETN node {node_id}: invalid image data (S3 download or format issue): {e}"
         ) from e
 
+
 # S3: Vast uses S3_BUCKET_NAME; we also accept S3_BUCKET for compatibility
 def _get_s3_config() -> dict | None:
     bucket = os.getenv("S3_BUCKET_NAME") or os.getenv("S3_BUCKET")
@@ -75,7 +76,9 @@ def _make_job_subdir(user_id: str, generation_id: str, job_id: str | None) -> st
     prefix = os.getenv("JOB_PREFIX", "vast")
     rid_src = (job_id or "").strip()
     rid = _safe_component(rid_src[:12]) if rid_src else uuid.uuid4().hex[:12]
-    return f"{prefix}/u{_safe_component(user_id)}/g{_safe_component(generation_id)}/{rid}"
+    return (
+        f"{prefix}/u{_safe_component(user_id)}/g{_safe_component(generation_id)}/{rid}"
+    )
 
 
 def _download_input_images(
@@ -138,7 +141,10 @@ def _patch_workflow(
     """Patch workflow: sageattn, VHS_VideoCombine, ETN_LoadImageBase64, prompt."""
     wf = copy.deepcopy(workflow)
     for node in wf.values():
-        if isinstance(node, dict) and (node.get("inputs") or {}).get("attention_override") == "sageattn":
+        if (
+            isinstance(node, dict)
+            and (node.get("inputs") or {}).get("attention_override") == "sageattn"
+        ):
             node.setdefault("inputs", {})["attention_override"] = "none"
     for node in wf.values():
         if isinstance(node, dict) and node.get("class_type") == "VHS_VideoCombine":
@@ -168,7 +174,9 @@ def _patch_workflow(
     if prompt_title and user_prompt:
         for node in wf.values():
             if isinstance(node, dict) and node.get("class_type") == "CLIPTextEncode":
-                if ((node.get("_meta") or {}).get("title") or "").strip() == prompt_title:
+                if (
+                    (node.get("_meta") or {}).get("title") or ""
+                ).strip() == prompt_title:
                     node.setdefault("inputs", {})["text"] = user_prompt
                     break
     return wf
@@ -215,7 +223,8 @@ def transform_app_to_vast(payload: dict) -> dict:
         "generation_id": generation_id,
         "timeout": int(job_input.get("timeout", 600)),
         "watermark_enabled": bool(job_input.get("watermark_enabled", True)),
-        "watermark_filename": (job_input.get("watermark_filename") or "").strip() or None,
+        "watermark_filename": (job_input.get("watermark_filename") or "").strip()
+        or None,
     }
     gl = (job_input.get("generation_lane") or "").strip()
     if gl:

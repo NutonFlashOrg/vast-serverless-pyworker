@@ -218,36 +218,62 @@ if ! cd "$SERVER_DIR"; then
     report_error_and_exit "Failed to cd into SERVER_DIR: $SERVER_DIR"
 fi
 
-# Optional: time lane benchmark (and optional prod payload) against local backend, print p50/p80 to logs.
+# Optional: time lane benchmark (+ mandatory prod app JSON per manifest) against local backend.
 # Use only on a dedicated calibration template or temporarily — not on every production scale-up.
-# Requires PYWORKER_REPO checkout that includes scripts/calibrate_workload_timing.py (your fork/branch).
+# Requires PYWORKER_REPO with scripts/calibrate_vast_workload_multi_lane.py or calibrate_workload_timing.py.
 # See comfy-vast-serverless/docs/VAST_BENCHMARK_LANES_AND_BOT_COST.md
 if [ "${RUN_WORKLOAD_CALIBRATION:-}" = "1" ] || [ "${RUN_WORKLOAD_CALIBRATION:-}" = "true" ]; then
-    CAL_SCRIPT="${SERVER_DIR}/scripts/calibrate_workload_timing.py"
-    if [ -f "$CAL_SCRIPT" ]; then
-        echo "[calibration] RUN_WORKLOAD_CALIBRATION=1 running ${CAL_SCRIPT}"
-        CAL_URL="${CALIBRATION_BACKEND_URL:-http://127.0.0.1:8189/generate/sync}"
-        CAL_RUNS="${CALIBRATION_RUNS:-30}"
-        CAL_WARM="${CALIBRATION_WARMUP:-1}"
-        CAL_BASE="${CALIBRATION_BASELINE:-100}"
-        CAL_ARGS=(python3 "$CAL_SCRIPT" --backend-url "$CAL_URL" --runs "$CAL_RUNS" --warmup "$CAL_WARM" --baseline "$CAL_BASE")
-        if [ -n "${CALIBRATION_PROD_PAYLOAD:-}" ] && [ -f "${CALIBRATION_PROD_PAYLOAD}" ]; then
-            CAL_ARGS+=(--prod-payload "${CALIBRATION_PROD_PAYLOAD}")
+    CAL_URL="${CALIBRATION_BACKEND_URL:-http://127.0.0.1:8189/generate/sync}"
+    CAL_RUNS="${CALIBRATION_RUNS:-30}"
+    CAL_WARM="${CALIBRATION_WARMUP:-1}"
+    CAL_BASE="${CALIBRATION_BASELINE:-100}"
+
+    if [ -n "${CALIBRATION_MANIFEST:-}" ]; then
+        if [ ! -f "${CALIBRATION_MANIFEST}" ]; then
+            report_error_and_exit "RUN_WORKLOAD_CALIBRATION: CALIBRATION_MANIFEST is set but not a file: ${CALIBRATION_MANIFEST}"
         fi
-        if [ -n "${CALIBRATION_PROD_P50_SECONDS:-}" ]; then
-            CAL_ARGS+=(--prod-p50-seconds "${CALIBRATION_PROD_P50_SECONDS}")
+        ML_SCRIPT="${SERVER_DIR}/scripts/calibrate_vast_workload_multi_lane.py"
+        if [ ! -f "$ML_SCRIPT" ]; then
+            report_error_and_exit "RUN_WORKLOAD_CALIBRATION: missing ${ML_SCRIPT} (set PYWORKER_REF to a repo that includes scripts/)"
         fi
+        echo "[calibration] RUN_WORKLOAD_CALIBRATION=1 multi-lane manifest=${CALIBRATION_MANIFEST}"
         set +e
-        "${CAL_ARGS[@]}" 2>&1 | tee -a "$PYWORKER_LOG"
+        python3 "$ML_SCRIPT" \
+            --manifest "${CALIBRATION_MANIFEST}" \
+            --backend-url "$CAL_URL" \
+            --runs "$CAL_RUNS" \
+            --warmup "$CAL_WARM" \
+            --baseline "$CAL_BASE" \
+            2>&1 | tee -a "$PYWORKER_LOG"
         CAL_EC=${PIPESTATUS[0]}
         set -e
-        if [ "$CAL_EC" -eq 0 ]; then
-            echo "[calibration] finished OK"
-        else
-            echo "[calibration] WARNING: script exited ${CAL_EC}; continuing to PyWorker"
+        if [ "$CAL_EC" -ne 0 ]; then
+            report_error_and_exit "RUN_WORKLOAD_CALIBRATION: calibrate_vast_workload_multi_lane.py failed (exit ${CAL_EC})"
         fi
+        echo "[calibration] finished OK (multi-lane)"
     else
-        echo "[calibration] SKIP: $CAL_SCRIPT missing (set PYWORKER_REF to a repo that includes scripts/)"
+        CAL_SCRIPT="${SERVER_DIR}/scripts/calibrate_workload_timing.py"
+        if [ -f "$CAL_SCRIPT" ]; then
+            echo "[calibration] RUN_WORKLOAD_CALIBRATION=1 legacy ${CAL_SCRIPT} (set CALIBRATION_MANIFEST for prod JSON manifest mode)"
+            CAL_ARGS=(python3 "$CAL_SCRIPT" --backend-url "$CAL_URL" --runs "$CAL_RUNS" --warmup "$CAL_WARM" --baseline "$CAL_BASE")
+            if [ -n "${CALIBRATION_PROD_PAYLOAD:-}" ] && [ -f "${CALIBRATION_PROD_PAYLOAD}" ]; then
+                CAL_ARGS+=(--prod-payload "${CALIBRATION_PROD_PAYLOAD}")
+            fi
+            if [ -n "${CALIBRATION_PROD_P50_SECONDS:-}" ]; then
+                CAL_ARGS+=(--prod-p50-seconds "${CALIBRATION_PROD_P50_SECONDS}")
+            fi
+            set +e
+            "${CAL_ARGS[@]}" 2>&1 | tee -a "$PYWORKER_LOG"
+            CAL_EC=${PIPESTATUS[0]}
+            set -e
+            if [ "$CAL_EC" -eq 0 ]; then
+                echo "[calibration] finished OK"
+            else
+                echo "[calibration] WARNING: script exited ${CAL_EC}; continuing to PyWorker"
+            fi
+        else
+            echo "[calibration] SKIP: $CAL_SCRIPT missing (set PYWORKER_REF to a repo that includes scripts/)"
+        fi
     fi
 fi
 
