@@ -1,24 +1,35 @@
 #!/usr/bin/env python3
 """
-Multi-lane Vast workload calibration on ONE reference GPU.
+Vast workload calibration on ONE reference GPU (boot or manual).
 
-1) Runs one benchmark series (same as calibrate_workload_timing.py: env BENCHMARK_GENERATION_LANE, S3).
-2) For each lane in a manifest, runs a prod-shaped app-format JSON series (transform_app_to_vast).
-3) Prints W_lane = baseline * T_prod_p50 / T_bench_p50 and paste-ready VAST_WORKLOAD_UNITS_<LANE>.
+1) **Light benchmark** series: uses ``BENCHMARK_GENERATION_LANE`` + S3 (same as
+   ``calibrate_workload_timing.py``). Run count: ``CALIBRATION_RUNS`` / ``--bench-runs``.
+2) **Prod-shaped** series: one app-format JSON from the manifest for the **matching**
+   bot ``generation_lane`` only (see mapping below). Run count: ``CALIBRATION_PROD_RUNS`` /
+   ``--prod-runs`` (defaults smaller than bench, e.g. 5).
+3) Prints ``W = baseline * T_prod_p50 / T_bench_p50`` and ``VAST_WORKLOAD_UNITS_<LANE>``.
+
+**Template lane → manifest key** (must exist in manifest JSON):
+
+- ``I2I_4090`` → ``I2I_4090``
+- ``I2V_5090_5SEC`` / ``I2V_5090_10SEC`` / ``I2V_5090_15SEC`` → same key
+- ``I2V_5090_FREE`` (prod template) → ``I2V_5090_5SEC``
+- ``I2V_5090_PAID`` (prod template) → ``I2V_5090_15SEC`` (matches PyWorker 15s bench graph)
+
+If ``BENCHMARK_GENERATION_LANE`` is **unset**, runs **all** manifest entries (handy for
+one-off local runs). Vast benchmark templates always set the lane → **one** prod JSON.
+Use ``--all-manifest-lanes`` to force all manifest entries even when the env var is set.
 
 Manifest example (JSON file):
   {
-    "I2V_5090_5SEC": "/path/to/prod_5s_app.json",
-    "I2V_5090_10SEC": "/path/to/prod_10s_app.json",
-    "I2V_5090_15SEC": "/path/to/prod_15s_app.json"
+    "I2V_5090_5SEC": "i2v_5s_app.json",
+    "I2V_5090_10SEC": "i2v_10s_app.json",
+    "I2V_5090_15SEC": "i2v_15s_app.json"
   }
 
 Each prod file: {"input": {"workflow": {...}, "user_id", "generation_id", "input_images", ...}}
 (bot-shaped). ``input_images`` may use ``{"from_env_benchmark_image": true, "title": "…"}``;
 resolved at run time from ``BENCHMARK_IMAGE_*`` / ``S3_*`` (same as PyWorker benchmark).
-
-Each POST uses a **deep-copied** workflow with **fresh random seeds** (see
-``workflow_transform.randomize_workflow_seeds``) so ComfyUI does not reuse cached runs.
 
 Requires: backend on CALIBRATE_BACKEND_URL; same env as worker for benchmark + S3.
 """
@@ -155,6 +166,27 @@ def _normalize_lane(s: str) -> str:
     return (s or "").strip().upper().replace(" ", "_")
 
 
+# BENCHMARK_GENERATION_LANE (template) → manifest / bot generation_lane key for prod JSON.
+_BENCH_LANE_TO_PROD_MANIFEST_KEY: dict[str, str] = {
+    "I2I_4090": "I2I_4090",
+    "I2V_5090_5SEC": "I2V_5090_5SEC",
+    "I2V_5090_10SEC": "I2V_5090_10SEC",
+    "I2V_5090_15SEC": "I2V_5090_15SEC",
+    "I2V_5090_FREE": "I2V_5090_5SEC",
+    "I2V_5090_PAID": "I2V_5090_15SEC",
+}
+
+
+def _manifest_key_for_benchmark_lane(bench_lane_raw: str) -> str | None:
+    """Resolve which manifest entry to use for prod timing (must match baked JSON keys)."""
+    b = _normalize_lane(bench_lane_raw)
+    if not b:
+        return None
+    if b in _BENCH_LANE_TO_PROD_MANIFEST_KEY:
+        return _BENCH_LANE_TO_PROD_MANIFEST_KEY[b]
+    return None
+
+
 def _hydrate_benchmark_input_images(inp: dict) -> None:
     """Replace ``from_env_benchmark_image`` entries with real bucket/key from env."""
     imgs = inp.get("input_images")
@@ -194,7 +226,7 @@ def _hydrate_benchmark_input_images(inp: dict) -> None:
 
 def main() -> int:
     p = argparse.ArgumentParser(
-        description="Multi-lane Vast workload: one T_bench, per-lane T_prod → VAST_WORKLOAD_UNITS_<LANE>"
+        description="Vast workload calibration: light bench + matching prod JSON → VAST_WORKLOAD_UNITS_<LANE>"
     )
     p.add_argument(
         "--manifest",
@@ -209,8 +241,36 @@ def main() -> int:
         ),
         help="POST target (default: local backend)",
     )
-    p.add_argument("--runs", type=int, default=30, help="Timed iterations per series")
-    p.add_argument("--warmup", type=int, default=1)
+    p.add_argument(
+        "--runs",
+        type=int,
+        default=None,
+        help="Timed **benchmark** iterations (alias for --bench-runs; default env CALIBRATION_RUNS)",
+    )
+    p.add_argument(
+        "--bench-runs",
+        type=int,
+        default=None,
+        help="Timed benchmark iterations after warmup (default: CALIBRATION_BENCH_RUNS or CALIBRATION_RUNS or 30)",
+    )
+    p.add_argument(
+        "--prod-runs",
+        type=int,
+        default=None,
+        help="Timed prod iterations after prod warmup (default: CALIBRATION_PROD_RUNS or 5)",
+    )
+    p.add_argument(
+        "--warmup",
+        type=int,
+        default=None,
+        help="Benchmark warmup iterations (default CALIBRATION_WARMUP or 1)",
+    )
+    p.add_argument(
+        "--prod-warmup",
+        type=int,
+        default=None,
+        help="Prod warmup iterations (default CALIBRATION_PROD_WARMUP or 0)",
+    )
     p.add_argument("--timeout", type=float, default=3600.0)
     p.add_argument("--insecure", action="store_true")
     p.add_argument(
@@ -219,7 +279,35 @@ def main() -> int:
         default=100.0,
         help="W_bench in W_lane = baseline * T_prod / T_bench (default 100)",
     )
+    p.add_argument(
+        "--calibration-lane",
+        type=str,
+        default="",
+        help="Override BENCHMARK_GENERATION_LANE for choosing manifest prod entry",
+    )
+    p.add_argument(
+        "--all-manifest-lanes",
+        action="store_true",
+        help="Run prod series for every manifest entry (legacy; ignores template lane)",
+    )
     args = p.parse_args()
+
+    bench_runs = args.bench_runs if args.bench_runs is not None else args.runs
+    if bench_runs is None:
+        bench_runs = int(
+            os.getenv("CALIBRATION_BENCH_RUNS")
+            or os.getenv("CALIBRATION_RUNS")
+            or "30"
+        )
+    prod_runs = args.prod_runs
+    if prod_runs is None:
+        prod_runs = int(os.getenv("CALIBRATION_PROD_RUNS") or "5")
+    bench_warmup = args.warmup
+    if bench_warmup is None:
+        bench_warmup = int(os.getenv("CALIBRATION_WARMUP") or "1")
+    prod_warmup = args.prod_warmup
+    if prod_warmup is None:
+        prod_warmup = int(os.getenv("CALIBRATION_PROD_WARMUP") or "0")
 
     if not args.manifest.is_file():
         print(f"ERROR: --manifest not found: {args.manifest}", file=sys.stderr)
@@ -251,6 +339,43 @@ def main() -> int:
 
     lanes_paths.sort(key=lambda x: x[0])
 
+    bench_lane_hint = (args.calibration_lane or os.getenv("BENCHMARK_GENERATION_LANE") or "").strip()
+    manifest_keys = {lane for lane, _ in lanes_paths}
+
+    if args.all_manifest_lanes:
+        print(
+            "=== Calibration mode: ALL manifest lanes (legacy --all-manifest-lanes) ===",
+            flush=True,
+        )
+    elif bench_lane_hint:
+        mk = _manifest_key_for_benchmark_lane(bench_lane_hint)
+        if not mk:
+            print(
+                f"ERROR: unknown BENCHMARK_GENERATION_LANE / --calibration-lane={bench_lane_hint!r}; "
+                f"expected one of {sorted(_BENCH_LANE_TO_PROD_MANIFEST_KEY)} or use --all-manifest-lanes",
+                file=sys.stderr,
+            )
+            return 2
+        if mk not in manifest_keys:
+            print(
+                f"ERROR: manifest has no entry for resolved prod lane {mk!r} "
+                f"(from template lane {bench_lane_hint!r}); manifest has: {sorted(manifest_keys)}",
+                file=sys.stderr,
+            )
+            return 2
+        lanes_paths = [(lane, path) for lane, path in lanes_paths if lane == mk]
+        print(
+            f"=== Calibration mode: single lane template={_normalize_lane(bench_lane_hint)!r} "
+            f"→ manifest[{mk!r}] (bench_runs={bench_runs} warmup={bench_warmup}, "
+            f"prod_runs={prod_runs} prod_warmup={prod_warmup}) ===",
+            flush=True,
+        )
+    else:
+        print(
+            "=== Calibration mode: ALL manifest lanes (no BENCHMARK_GENERATION_LANE set) ===",
+            flush=True,
+        )
+
     get_bench = _import_benchmark_payload_builder()
 
     def build_bench():
@@ -264,8 +389,8 @@ def main() -> int:
         url=args.backend_url,
         label="bench",
         build_payload=build_bench,
-        runs=args.runs,
-        warmup=args.warmup,
+        runs=bench_runs,
+        warmup=bench_warmup,
         timeout=args.timeout,
         insecure=args.insecure,
     )
@@ -320,8 +445,8 @@ def main() -> int:
             url=args.backend_url,
             label=f"prod-{lane}",
             build_payload=build_prod,
-            runs=args.runs,
-            warmup=args.warmup,
+            runs=prod_runs,
+            warmup=prod_warmup,
             timeout=args.timeout,
             insecure=args.insecure,
         )
@@ -345,8 +470,10 @@ def main() -> int:
 
     summary = {
         "backend_url": args.backend_url,
-        "runs": args.runs,
-        "warmup": args.warmup,
+        "bench_runs": bench_runs,
+        "bench_warmup": bench_warmup,
+        "prod_runs": prod_runs,
+        "prod_warmup": prod_warmup,
         "baseline": args.baseline,
         "t_bench_seconds": {"p50": b50, "p80": b80},
         "lanes": per_lane,

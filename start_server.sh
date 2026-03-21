@@ -217,14 +217,16 @@ if ! cd "$SERVER_DIR"; then
     report_error_and_exit "Failed to cd into SERVER_DIR: $SERVER_DIR"
 fi
 
-# Optional: time lane benchmark (+ mandatory prod app JSON per manifest) against local backend.
-# Use only on a dedicated calibration template or temporarily — not on every production scale-up.
+# Optional: light benchmark (CALIBRATION_RUNS) + matching prod JSON from manifest (CALIBRATION_PROD_RUNS).
+# Template BENCHMARK_GENERATION_LANE selects a single manifest lane; set CALIBRATION_ALL_MANIFEST_LANES=1 for legacy all-lane mode.
 # Requires PYWORKER_REPO with scripts/calibrate_vast_workload_multi_lane.py or calibrate_workload_timing.py.
 # See comfy-vast-serverless/docs/VAST_BENCHMARK_LANES_AND_BOT_COST.md
 if [ "${RUN_WORKLOAD_CALIBRATION:-}" = "1" ] || [ "${RUN_WORKLOAD_CALIBRATION:-}" = "true" ]; then
     CAL_URL="${CALIBRATION_BACKEND_URL:-http://127.0.0.1:8189/generate/sync}"
     CAL_RUNS="${CALIBRATION_RUNS:-30}"
+    CAL_PROD_RUNS="${CALIBRATION_PROD_RUNS:-5}"
     CAL_WARM="${CALIBRATION_WARMUP:-1}"
+    CAL_PROD_WARM="${CALIBRATION_PROD_WARMUP:-0}"
     CAL_BASE="${CALIBRATION_BASELINE:-100}"
 
     if [ -n "${CALIBRATION_MANIFEST:-}" ]; then
@@ -235,21 +237,28 @@ if [ "${RUN_WORKLOAD_CALIBRATION:-}" = "1" ] || [ "${RUN_WORKLOAD_CALIBRATION:-}
         if [ ! -f "$ML_SCRIPT" ]; then
             report_error_and_exit "RUN_WORKLOAD_CALIBRATION: missing ${ML_SCRIPT} (set PYWORKER_REF to a repo that includes scripts/)"
         fi
-        echo "[calibration] RUN_WORKLOAD_CALIBRATION=1 multi-lane manifest=${CALIBRATION_MANIFEST}"
+        echo "[calibration] RUN_WORKLOAD_CALIBRATION=1 manifest=${CALIBRATION_MANIFEST} bench_runs=${CAL_RUNS} prod_runs=${CAL_PROD_RUNS}"
+        ML_ARGS=(
+            python3 "$ML_SCRIPT"
+            --manifest "${CALIBRATION_MANIFEST}"
+            --backend-url "$CAL_URL"
+            --bench-runs "$CAL_RUNS"
+            --warmup "$CAL_WARM"
+            --prod-runs "$CAL_PROD_RUNS"
+            --prod-warmup "$CAL_PROD_WARM"
+            --baseline "$CAL_BASE"
+        )
+        if [ "${CALIBRATION_ALL_MANIFEST_LANES:-}" = "1" ] || [ "${CALIBRATION_ALL_MANIFEST_LANES:-}" = "true" ]; then
+            ML_ARGS+=(--all-manifest-lanes)
+        fi
         set +e
-        python3 "$ML_SCRIPT" \
-            --manifest "${CALIBRATION_MANIFEST}" \
-            --backend-url "$CAL_URL" \
-            --runs "$CAL_RUNS" \
-            --warmup "$CAL_WARM" \
-            --baseline "$CAL_BASE" \
-            2>&1 | tee -a "$PYWORKER_LOG"
+        "${ML_ARGS[@]}" 2>&1 | tee -a "$PYWORKER_LOG"
         CAL_EC=${PIPESTATUS[0]}
         set -e
         if [ "$CAL_EC" -ne 0 ]; then
             report_error_and_exit "RUN_WORKLOAD_CALIBRATION: calibrate_vast_workload_multi_lane.py failed (exit ${CAL_EC})"
         fi
-        echo "[calibration] finished OK (multi-lane)"
+        echo "[calibration] finished OK (manifest)"
     else
         CAL_SCRIPT="${SERVER_DIR}/scripts/calibrate_workload_timing.py"
         if [ -f "$CAL_SCRIPT" ]; then
