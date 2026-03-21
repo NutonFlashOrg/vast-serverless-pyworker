@@ -5,7 +5,6 @@ Multi-lane Vast workload calibration on ONE reference GPU.
 1) Runs one benchmark series (same as calibrate_workload_timing.py: env BENCHMARK_GENERATION_LANE, S3).
 2) For each lane in a manifest, runs a prod-shaped app-format JSON series (transform_app_to_vast).
 3) Prints W_lane = baseline * T_prod_p50 / T_bench_p50 and paste-ready VAST_WORKLOAD_UNITS_<LANE>.
-4) Echoes VAST_REQUEST_COST_<LANE>=... when CALIBRATION_REQUEST_COST_<LANE> or VAST_REQUEST_COST_<LANE> is set in the environment (no scaling; bot credits are separate from Vast load).
 
 Manifest example (JSON file):
   {
@@ -193,17 +192,6 @@ def _hydrate_benchmark_input_images(inp: dict) -> None:
     inp["input_images"] = out
 
 
-def _request_cost_echo_value(lane: str) -> str | None:
-    """Prefer CALIBRATION_REQUEST_COST_<LANE>; else VAST_REQUEST_COST_<LANE>."""
-    cal = (os.getenv(f"CALIBRATION_REQUEST_COST_{lane}") or "").strip()
-    if cal:
-        return cal
-    vast = (os.getenv(f"VAST_REQUEST_COST_{lane}") or "").strip()
-    if vast:
-        return vast
-    return None
-
-
 def main() -> int:
     p = argparse.ArgumentParser(
         description="Multi-lane Vast workload: one T_bench, per-lane T_prod → VAST_WORKLOAD_UNITS_<LANE>"
@@ -351,27 +339,9 @@ def main() -> int:
             f"VAST_WORKLOAD_UNITS_{lane} ≈ {args.baseline} * ({p50:.2f}/{b50:.2f}) = {w_lane:.1f}"
         )
 
-    print("\n# Paste into bot + Vast template env (scaling only; not user credits)\n")
+    print("\n# Paste into bot + Vast template env (SDK cost= / scaling)\n")
     for lane in sorted(suggested.keys()):
         print(f"VAST_WORKLOAD_UNITS_{lane}={suggested[lane]:.1f}")
-
-    print(
-        "\n# Bot credits (echo from env when set; set VAST_REQUEST_COST_* in bot .env if absent)\n"
-    )
-    cost_echo: dict[str, str] = {}
-    missing_cost: list[str] = []
-    for lane in sorted(suggested.keys()):
-        val = _request_cost_echo_value(lane)
-        if val:
-            print(f"VAST_REQUEST_COST_{lane}={val}")
-            cost_echo[lane] = val
-        else:
-            missing_cost.append(lane)
-    if missing_cost:
-        print(
-            "# (no CALIBRATION_REQUEST_COST_* or VAST_REQUEST_COST_* for: "
-            f"{', '.join(missing_cost)})"
-        )
 
     summary = {
         "backend_url": args.backend_url,
@@ -381,7 +351,6 @@ def main() -> int:
         "t_bench_seconds": {"p50": b50, "p80": b80},
         "lanes": per_lane,
         "vast_workload_units_suggested": {k: round(v, 2) for k, v in suggested.items()},
-        "vast_request_cost_echo": cost_echo,
     }
     print("\nJSON summary:", json.dumps(summary, indent=2))
     return 0

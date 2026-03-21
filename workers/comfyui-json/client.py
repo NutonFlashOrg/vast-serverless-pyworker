@@ -18,8 +18,8 @@ DEFAULT_HEIGHT = 512
 DEFAULT_STEPS = 20
 
 
-def _demo_vast_request_cost() -> float:
-    """Demo SDK cost= for Vast scaling (not user credits). Required: VAST_DEMO_REQUEST_COST or VAST_WORKLOAD_UNITS."""
+def _demo_vast_sdk_cost() -> float:
+    """Demo Vast SDK ``cost=`` for local CLI. Required: VAST_DEMO_REQUEST_COST or VAST_WORKLOAD_UNITS."""
     raw = (os.getenv("VAST_DEMO_REQUEST_COST") or "").strip()
     if raw:
         try:
@@ -100,7 +100,7 @@ async def call_generate(
         }
     }
     return await endpoint.request(
-        "/generate/sync", payload, cost=_demo_vast_request_cost()
+        "/generate/sync", payload, cost=_demo_vast_sdk_cost()
     )
 
 
@@ -119,7 +119,7 @@ async def call_generate_workflow(
         }
     }
     return await endpoint.request(
-        "/generate/sync", payload, cost=_demo_vast_request_cost()
+        "/generate/sync", payload, cost=_demo_vast_sdk_cost()
     )
 
 
