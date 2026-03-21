@@ -35,8 +35,13 @@ def _merge_passthrough(out: dict, payload: dict) -> dict:
 
 
 def _random_comfy_seed_int() -> int:
-    """Comfy / PyTorch-friendly signed 64-bit range (API JSON uses ints)."""
-    return random.randint(-(2**63), 2**63 - 1)
+    """Unsigned 64-bit seed in [0, 2**64-1].
+
+    ComfyUI widgets such as ``RandomNoise.noise_seed`` validate ``min: 0`` (see
+    ``value_smaller_than_min`` errors if negative). Signed ``randint(-2**63, …)``
+    intermittently produced invalid prompts.
+    """
+    return random.getrandbits(64)
 
 
 def randomize_workflow_seeds(workflow: dict | None) -> None:
