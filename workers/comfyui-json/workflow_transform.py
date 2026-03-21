@@ -34,14 +34,22 @@ def _merge_passthrough(out: dict, payload: dict) -> dict:
     return merged
 
 
-def _random_comfy_seed_int() -> int:
+def _random_uint64_seed() -> int:
     """Unsigned 64-bit seed in [0, 2**64-1].
 
-    ComfyUI widgets such as ``RandomNoise.noise_seed`` validate ``min: 0`` (see
-    ``value_smaller_than_min`` errors if negative). Signed ``randint(-2**63, …)``
-    intermittently produced invalid prompts.
+    Use for direct node inputs such as ``RandomNoise.noise_seed`` (Comfy ``min: 0``,
+    ``max: 2**64-1``). Negative signed seeds caused ``value_smaller_than_min``.
     """
     return random.getrandbits(64)
+
+
+def _random_primitive_int_seed() -> int:
+    """Seed range for ``PrimitiveInt`` / ``PrimitiveFloat`` used as workflow seeds.
+
+    Easy-Use (and similar) primitives validate ``value`` with ``max: 2**63-1``; full
+    uint64 triggers ``value_bigger_than_max`` and drops the output subgraph (no video).
+    """
+    return random.randint(0, 2**63 - 1)
 
 
 def randomize_workflow_seeds(workflow: dict | None) -> None:
@@ -65,7 +73,7 @@ def randomize_workflow_seeds(workflow: dict | None) -> None:
         if cls == "RandomNoise" and "noise_seed" in inputs:
             v = inputs["noise_seed"]
             if isinstance(v, int):
-                inputs["noise_seed"] = _random_comfy_seed_int()
+                inputs["noise_seed"] = _random_uint64_seed()
             elif isinstance(v, list) and v:
                 ref = v[0]
                 sid = str(ref) if ref is not None else ""
@@ -78,9 +86,9 @@ def randomize_workflow_seeds(workflow: dict | None) -> None:
             if isinstance(val, bool):
                 continue
             if isinstance(val, int):
-                inputs[key] = _random_comfy_seed_int()
+                inputs[key] = _random_uint64_seed()
             elif isinstance(val, float):
-                inputs[key] = float(_random_comfy_seed_int())
+                inputs[key] = float(_random_uint64_seed())
             elif isinstance(val, list) and val:
                 ref = val[0]
                 sid = str(ref) if ref is not None else ""
@@ -102,9 +110,9 @@ def randomize_workflow_seeds(workflow: dict | None) -> None:
         cls = tgt.get("class_type")
         tin = tgt.setdefault("inputs", {})
         if cls == "PrimitiveInt" and "value" in tin:
-            tin["value"] = _random_comfy_seed_int()
+            tin["value"] = _random_primitive_int_seed()
         elif cls == "PrimitiveFloat" and "value" in tin:
-            tin["value"] = float(_random_comfy_seed_int())
+            tin["value"] = float(_random_primitive_int_seed())
 
 
 def _validate_base64_image(b64: str, node_id: str) -> None:
