@@ -287,6 +287,7 @@ def transform_app_to_vast(payload: dict) -> dict:
         input_dir = Path("/tmp/input") / run_subdir
         downloaded = _download_input_images(input_images, input_dir)
     patched = _patch_workflow(workflow, run_subdir, job_input, downloaded)
+    randomize_workflow_seeds(patched)
     s3_cfg = _get_s3_config()
     s3_block = {}
     if s3_cfg:
