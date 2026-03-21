@@ -43,6 +43,19 @@ def _random_uint64_seed() -> int:
     return random.getrandbits(64)
 
 
+def _random_uint32_seed() -> int:
+    """Unsigned 32-bit seed in [0, 2**32-1].
+
+    Some custom nodes (e.g. ``SeedVR2VideoUpscaler``) cap ``seed`` at ``2**32-1``;
+    uint64 triggers Comfy ``value_bigger_than_max`` and fails prompt validation.
+    """
+    return random.getrandbits(32)
+
+
+# class_type values whose ``seed`` / ``*_seed`` inputs must stay in uint32 range
+_UINT32_SEED_CLASS_TYPES = frozenset({"SeedVR2VideoUpscaler"})
+
+
 def _random_primitive_int_seed() -> int:
     """Seed range for ``PrimitiveInt`` / ``PrimitiveFloat`` used as workflow seeds.
 
@@ -84,6 +97,17 @@ def randomize_workflow_seeds(workflow: dict | None) -> None:
             if key != "seed" and key != "noise_seed" and not key.endswith("_seed"):
                 continue
             if isinstance(val, bool):
+                continue
+            if cls in _UINT32_SEED_CLASS_TYPES:
+                if isinstance(val, int):
+                    inputs[key] = _random_uint32_seed()
+                elif isinstance(val, float):
+                    inputs[key] = float(_random_uint32_seed())
+                elif isinstance(val, list) and val:
+                    ref = val[0]
+                    sid = str(ref) if ref is not None else ""
+                    if sid and sid in workflow:
+                        linked_primitive_ids.add(sid)
                 continue
             if isinstance(val, int):
                 inputs[key] = _random_uint64_seed()
