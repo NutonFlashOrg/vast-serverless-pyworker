@@ -106,18 +106,13 @@ def _get_benchmark_payload() -> dict:
     if bucket and key:
         input_images.append({"bucket": bucket, "key": key})
 
-    # Randomize seeds to avoid ComfyUI cache reuse and produce realistic benchmark timings
     if isinstance(workflow, dict):
-        for node in workflow.values():
-            if not isinstance(node, dict):
-                continue
-            cls = node.get("class_type")
-            meta = node.get("_meta") or {}
-            inputs = node.setdefault("inputs", {})
-            if cls == "PrimitiveInt" and meta.get("title") == "Seed":
-                inputs["value"] = random.randint(-(2**63), 2**63 - 1)
-            if cls == "RandomNoise" and "noise_seed" in inputs:
-                inputs["noise_seed"] = random.randint(0, 2**63 - 1)
+        try:
+            from .workflow_transform import randomize_workflow_seeds
+        except ImportError:
+            from workflow_transform import randomize_workflow_seeds
+
+        randomize_workflow_seeds(workflow)
 
     # App format; transform to workflow_json so backend receives correct format
     app_payload = {

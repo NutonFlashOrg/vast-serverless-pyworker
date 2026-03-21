@@ -18,12 +18,16 @@ Each prod file: {"input": {"workflow": {...}, "user_id", "generation_id", "input
 (bot-shaped). ``input_images`` may use ``{"from_env_benchmark_image": true, "title": "…"}``;
 resolved at run time from ``BENCHMARK_IMAGE_*`` / ``S3_*`` (same as PyWorker benchmark).
 
+Each POST uses a **deep-copied** workflow with **fresh random seeds** (see
+``workflow_transform.randomize_workflow_seeds``) so ComfyUI does not reuse cached runs.
+
 Requires: backend on CALIBRATE_BACKEND_URL; same env as worker for benchmark + S3.
 """
 
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import os
 import sys
@@ -288,7 +292,10 @@ def main() -> int:
         print("ERROR: invalid T_bench p50", file=sys.stderr)
         return 1
 
-    from workflow_transform import transform_app_to_vast  # noqa: E402
+    from workflow_transform import (  # noqa: E402
+        randomize_workflow_seeds,
+        transform_app_to_vast,
+    )
 
     per_lane: dict[str, dict[str, float]] = {}
     suggested: dict[str, float] = {}
@@ -305,13 +312,20 @@ def main() -> int:
                 file=sys.stderr,
             )
             return 2
-        inp = dict(inp)
-        inp["generation_lane"] = lane
-        _hydrate_benchmark_input_images(inp)
-        raw = {"input": inp}
+        template_input = copy.deepcopy(inp)
 
-        def build_prod(r=raw):
-            return transform_app_to_vast(r)
+        def build_prod(
+            *,
+            _lane: str = lane,
+            _template: dict = template_input,
+        ):
+            body_inp = copy.deepcopy(_template)
+            body_inp["generation_lane"] = _lane
+            _hydrate_benchmark_input_images(body_inp)
+            wf = body_inp.get("workflow")
+            if isinstance(wf, dict):
+                randomize_workflow_seeds(wf)
+            return transform_app_to_vast({"input": body_inp})
 
         print(f"\n=== Prod series lane={lane} file={jpath.name} ===", flush=True)
         prod_times = _run_series(

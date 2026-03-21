@@ -12,6 +12,7 @@ import base64
 import copy
 import logging
 import os
+import random
 import re
 import uuid
 from io import BytesIO
@@ -31,6 +32,74 @@ def _merge_passthrough(out: dict, payload: dict) -> dict:
         if k in payload:
             merged[k] = payload[k]
     return merged
+
+
+def _random_comfy_seed_int() -> int:
+    """Comfy / PyTorch-friendly signed 64-bit range (API JSON uses ints)."""
+    return random.randint(-(2**63), 2**63 - 1)
+
+
+def randomize_workflow_seeds(workflow: dict | None) -> None:
+    """In-place: new random seeds/noise each call so repeat runs do not reuse ComfyUI caches.
+
+    Covers integer ``seed`` / ``*_seed`` inputs, widget links ``[node_id, slot]`` into
+    primitives, ``RandomNoise.noise_seed``, and ``PrimitiveInt`` nodes titled ``Seed``.
+    """
+    if not isinstance(workflow, dict):
+        return
+
+    linked_primitive_ids: set[str] = set()
+
+    for node in workflow.values():
+        if not isinstance(node, dict):
+            continue
+        inputs = node.get("inputs")
+        if not isinstance(inputs, dict):
+            continue
+        cls = node.get("class_type")
+        if cls == "RandomNoise" and "noise_seed" in inputs:
+            v = inputs["noise_seed"]
+            if isinstance(v, int):
+                inputs["noise_seed"] = _random_comfy_seed_int()
+            elif isinstance(v, list) and v:
+                ref = v[0]
+                sid = str(ref) if ref is not None else ""
+                if sid and sid in workflow:
+                    linked_primitive_ids.add(sid)
+            continue
+        for key, val in list(inputs.items()):
+            if key != "seed" and key != "noise_seed" and not key.endswith("_seed"):
+                continue
+            if isinstance(val, bool):
+                continue
+            if isinstance(val, int):
+                inputs[key] = _random_comfy_seed_int()
+            elif isinstance(val, float):
+                inputs[key] = float(_random_comfy_seed_int())
+            elif isinstance(val, list) and val:
+                ref = val[0]
+                sid = str(ref) if ref is not None else ""
+                if sid and sid in workflow:
+                    linked_primitive_ids.add(sid)
+
+    for nid, node in workflow.items():
+        if not isinstance(node, dict):
+            continue
+        meta = node.get("_meta") or {}
+        title = (meta.get("title") or "").strip().lower()
+        if title == "seed":
+            linked_primitive_ids.add(str(nid))
+
+    for sid in linked_primitive_ids:
+        tgt = workflow.get(sid)
+        if not isinstance(tgt, dict):
+            continue
+        cls = tgt.get("class_type")
+        tin = tgt.setdefault("inputs", {})
+        if cls == "PrimitiveInt" and "value" in tin:
+            tin["value"] = _random_comfy_seed_int()
+        elif cls == "PrimitiveFloat" and "value" in tin:
+            tin["value"] = float(_random_comfy_seed_int())
 
 
 def _validate_base64_image(b64: str, node_id: str) -> None:

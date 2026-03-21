@@ -7,6 +7,7 @@ Use this instead of hand-recording Vast startup benchmarks across many instances
   - Run:  python scripts/calibrate_workload_timing.py --runs 30
   - Script loops locally: build payload → POST backend → record wall seconds.
   - It prints p50/p80 and suggested VAST_WORKLOAD_UNITS when you pass --prod-p50-seconds.
+  - Each iteration deep-copies the workflow and randomizes seeds (Comfy cache busting).
 
 Requires:
   - Backend listening (default http://127.0.0.1:8189), same as MODEL_SERVER_URL:MODEL_SERVER_PORT.
@@ -21,6 +22,7 @@ For several prod lanes vs one T_bench, use scripts/calibrate_vast_workload_multi
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import os
 import sys
@@ -211,12 +213,18 @@ def main() -> int:
                 f"ERROR: --prod-payload not found: {args.prod_payload}", file=sys.stderr
             )
             return 2
-        raw = _load_json(args.prod_payload)
+        raw_template = _load_json(args.prod_payload)
 
         def build_prod():
-            from workflow_transform import transform_app_to_vast
+            from workflow_transform import randomize_workflow_seeds, transform_app_to_vast
 
-            return transform_app_to_vast(raw)
+            body = copy.deepcopy(raw_template)
+            inp = body.get("input")
+            if isinstance(inp, dict):
+                wf = inp.get("workflow")
+                if isinstance(wf, dict):
+                    randomize_workflow_seeds(wf)
+            return transform_app_to_vast(body)
 
         print("\n=== Prod-shaped series (from --prod-payload file) ===", flush=True)
         prod_times = _run_series(
