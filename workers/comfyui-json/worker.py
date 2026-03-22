@@ -36,9 +36,21 @@ _DEFAULT_BENCHMARK_FILES: dict[str, str] = {
     "I2V_5090_10SEC": "benchmark_I2V_5090_10SEC.json",
     "I2V_5090_15SEC": "benchmark_I2V_5090_15SEC.json",
 }
-# Lanes that may appear on input.generation_lane (bot, benchmarks, legacy). Each requires
-# VAST_WORKLOAD_UNITS_<LANE> when present — no numeric defaults (see VAST_BENCHMARK_LANES_AND_BOT_COST.md).
+# Lanes that may appear on input.generation_lane (bot, benchmarks, legacy).
+# If ``VAST_WORKLOAD_UNITS_<LANE>`` is unset, ``workload_calculator`` falls back to
+# ``_DEFAULT_WORKLOAD_UNITS_BY_LANE`` (prod-shaped values; override via template env after calibration).
 _KNOWN_WORKLOAD_LANES: frozenset[str] = frozenset(_DEFAULT_BENCHMARK_FILES.keys())
+
+# Same numeric defaults as comfy-vast-serverless/.env.example — template env should override when calibrated.
+_DEFAULT_WORKLOAD_UNITS_BY_LANE: dict[str, float] = {
+    "I2I_4090": 69.16,
+    "I2V_5090_5SEC": 1323.2,
+    "I2V_5090_10SEC": 1363.9,
+    "I2V_5090_15SEC": 1215.5,
+    "I2V_5090_FREE": 1323.2,
+    "I2V_5090_PAID": 1215.5,
+}
+_DEFAULT_VAST_WORKLOAD_UNITS_GLOBAL = 100.0
 
 # Custom backend writes "Backend ready"; stock uses "To see the GUI go to: "
 MODEL_LOAD_LOG_MSG = ["Backend ready"]
@@ -166,8 +178,9 @@ def _normalize_lane_token(raw: str) -> str:
 def workload_calculator(payload: dict) -> float:
     """Declared load for Vast routing/scaling — must match bot SDK ``cost=`` for the same lane.
 
-    With ``input.generation_lane``: requires ``VAST_WORKLOAD_UNITS_<LANE>`` (no defaults).
-    Without ``generation_lane`` (benchmark / legacy): requires template ``VAST_WORKLOAD_UNITS``.
+    With ``input.generation_lane``: reads ``VAST_WORKLOAD_UNITS_<LANE>``, else built-in default
+    (``_DEFAULT_WORKLOAD_UNITS_BY_LANE``) with a warning log.
+    Without ``generation_lane`` (benchmark / legacy): ``VAST_WORKLOAD_UNITS``, else default ``100``.
     """
     inp = payload.get("input")
     if isinstance(inp, dict):
@@ -181,9 +194,19 @@ def workload_calculator(payload: dict) -> float:
             env_key = f"VAST_WORKLOAD_UNITS_{lane}"
             raw = os.getenv(env_key)
             if raw is None or str(raw).strip() == "":
+                fallback = _DEFAULT_WORKLOAD_UNITS_BY_LANE.get(lane)
+                if fallback is not None:
+                    _log.warning(
+                        "Missing %s for generation_lane=%s; using default %s "
+                        "(set on Vast template env to match bot SDK cost=)",
+                        env_key,
+                        lane,
+                        fallback,
+                    )
+                    return float(fallback)
                 raise RuntimeError(
                     f"Missing required environment variable {env_key} "
-                    f"(generation_lane={lane} on request)"
+                    f"(generation_lane={lane} on request) and no built-in default for this lane"
                 )
             try:
                 return float(raw)
@@ -191,10 +214,11 @@ def workload_calculator(payload: dict) -> float:
                 raise ValueError(f"Invalid {env_key}={raw!r}") from e
     raw = os.getenv("VAST_WORKLOAD_UNITS")
     if raw is None or str(raw).strip() == "":
-        raise RuntimeError(
-            "Missing required environment variable VAST_WORKLOAD_UNITS "
-            "(no input.generation_lane on request)"
+        _log.warning(
+            "Missing VAST_WORKLOAD_UNITS (no input.generation_lane); using default %s",
+            _DEFAULT_VAST_WORKLOAD_UNITS_GLOBAL,
         )
+        return float(_DEFAULT_VAST_WORKLOAD_UNITS_GLOBAL)
     try:
         return float(raw)
     except ValueError as e:
