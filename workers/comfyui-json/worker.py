@@ -56,7 +56,7 @@ _BENCHMARK_ENV_LANE_TO_REQUEST_GENERATION_LANE: dict[str, str] = {
 _LTX_BENCHMARK_AUDIO_LANES: frozenset[str] = frozenset({"LTX23_5090", "LTX23_5090_AI2V"})
 _KNOWN_WORKLOAD_LANES: frozenset[str] = frozenset(
     _BENCHMARK_ENV_LANE_TO_REQUEST_GENERATION_LANE.values()
-) | frozenset({"I2V_TTS_IMAGE_REF"})
+)
 
 # Custom backend writes "Backend ready"; stock uses "To see the GUI go to: "
 MODEL_LOAD_LOG_MSG = ["Backend ready"]
