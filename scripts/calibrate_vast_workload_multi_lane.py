@@ -7,7 +7,7 @@ Vast workload calibration on ONE reference GPU (boot or manual).
 2) **Prod-shaped** series: one app-format JSON from the manifest for the **matching**
    bot ``generation_lane`` only (see mapping below). Run count: ``CALIBRATION_PROD_RUNS`` /
    ``--prod-runs`` (defaults smaller than bench, e.g. 5).
-3) Prints ``W = baseline * T_prod_p50 / T_bench_p50`` and ``VAST_WORKLOAD_UNITS_<LANE>``.
+3) Prints ``W`` and ``VAST_WORKLOAD_UNITS_<lane>`` (``lane`` = manifest key = bot ``generation_lane``).
 
 **BENCHMARK_GENERATION_LANE → manifest key** (must exist in manifest JSON):
 

@@ -6,7 +6,7 @@ Use this instead of hand-recording Vast startup benchmarks across many instances
   - Rent one instance with the same image + template env as production (S3, BENCHMARK_*).
   - Run:  python scripts/calibrate_workload_timing.py --runs 30
   - Script loops locally: build payload → POST backend → record wall seconds.
-  - It prints p50/p80 and suggested VAST_WORKLOAD_UNITS when you pass --prod-p50-seconds.
+  - With ``--prod-p50-seconds``: p50/p80 + suggested ``VAST_WORKLOAD_UNITS_<generation_lane>``.
   - Each iteration deep-copies the workflow and randomizes seeds (Comfy cache busting).
 
 Requires:
