@@ -21,8 +21,9 @@ DEFAULT_STEPS = 20
 def _demo_vast_sdk_cost() -> float:
     """Demo Vast SDK ``cost=`` for local CLI.
 
-    Resolution order: ``VAST_DEMO_REQUEST_COST``; else ``VAST_WORKLOAD_UNITS_<VAST_DEMO_GENERATION_LANE>``
-    when lane is set; else ``VAST_WORKLOAD_UNITS``.
+    Resolution order for the numeric ``cost=`` / ``input.vast_workload_units`` demo:
+    ``VAST_DEMO_REQUEST_COST``; else ``VAST_WORKLOAD_UNITS_<VAST_DEMO_GENERATION_LANE>`` when lane is set;
+    else ``VAST_WORKLOAD_UNITS`` (local demo only — the worker does not read a global workload env).
     """
     raw = (os.getenv("VAST_DEMO_REQUEST_COST") or "").strip()
     if raw:
@@ -107,6 +108,7 @@ async def call_generate(
 ) -> dict:
     """Generate image using Text2Image modifier"""
     endpoint = await client.get_endpoint(name=endpoint_name)
+    cost = _demo_vast_sdk_cost()
     payload = {
         "input": {
             "request_id": str(uuid.uuid4()),
@@ -118,9 +120,10 @@ async def call_generate(
                 "steps": steps,
                 "seed": seed,
             },
+            "vast_workload_units": cost,
         }
     }
-    return await endpoint.request("/generate/sync", payload, cost=_demo_vast_sdk_cost())
+    return await endpoint.request("/generate/sync", payload, cost=cost)
 
 
 async def call_generate_workflow(
@@ -131,13 +134,15 @@ async def call_generate_workflow(
 ) -> dict:
     """Generate using custom workflow JSON"""
     endpoint = await client.get_endpoint(name=endpoint_name)
+    cost = _demo_vast_sdk_cost()
     payload = {
         "input": {
             "request_id": str(uuid.uuid4()),
             "workflow_json": workflow_json,
+            "vast_workload_units": cost,
         }
     }
-    return await endpoint.request("/generate/sync", payload, cost=_demo_vast_sdk_cost())
+    return await endpoint.request("/generate/sync", payload, cost=cost)
 
 
 # ---------------------- Demo Class ----------------------

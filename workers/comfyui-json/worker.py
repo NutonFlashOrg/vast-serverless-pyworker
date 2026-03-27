@@ -50,32 +50,13 @@ _BENCHMARK_ENV_LANE_TO_REQUEST_GENERATION_LANE: dict[str, str] = {
     "LTX23_5090": "LTX23_5090_AI2V",
     "LTX23_5090_AI2V": "LTX23_5090_AI2V",
 }
-# Lanes that may appear on input.generation_lane (bot traffic).
-# If ``VAST_WORKLOAD_UNITS_<LANE>`` is unset, ``workload_calculator`` raises unless
-# ``ALLOW_DEFAULT_WORKLOAD_UNITS=1`` (then falls back to ``_DEFAULT_WORKLOAD_UNITS_BY_LANE``).
-
-# Same numeric defaults as comfy-vast-serverless/.env.example — template env should override when calibrated.
-# I2V 5090 trio: single scale from reference lane 5SEC (units=1323.2 @ p50 64.18s):
-#   units_lane = units_5sec * p50_lane / 64.18  → 10SEC≈2760, 15SEC≈4241.33
-_DEFAULT_WORKLOAD_UNITS_BY_LANE: dict[str, float] = {
-    "I2I_4090": 69.16,
-    "I2V_5090_5SEC": 1323.2,
-    "I2V_5090_10SEC": 2760.0,
-    "I2V_5090_15SEC": 4241.33,
-    "LTX23_5090_AI2V": 2500.0,
-    # TTS + image ref: bot usually sends vast_workload_units; override from measured p50 vs 5SEC ref
-    "I2V_TTS_IMAGE_REF": 2500.0,
-}
-_DEFAULT_VAST_WORKLOAD_UNITS_GLOBAL = 100.0
-
-# Bot-only lane (no misc/benchmark JSON): known for workload_calculator allowlist
-_EXTRA_KNOWN_LANES: frozenset[str] = frozenset({"I2V_TTS_IMAGE_REF"})
+# Lanes that may appear on input.generation_lane (bot traffic). Declared load comes from non-empty
+# ``input.vast_workload_units`` when valid (matches bot SDK precedence), else template env
+# ``VAST_WORKLOAD_UNITS_<LANE>``.
 _LTX_BENCHMARK_AUDIO_LANES: frozenset[str] = frozenset({"LTX23_5090", "LTX23_5090_AI2V"})
-_KNOWN_WORKLOAD_LANES: frozenset[str] = (
-    frozenset(_DEFAULT_WORKLOAD_UNITS_BY_LANE.keys())
-    | frozenset(_BENCHMARK_ENV_LANE_TO_REQUEST_GENERATION_LANE.values())
-    | _EXTRA_KNOWN_LANES
-)
+_KNOWN_WORKLOAD_LANES: frozenset[str] = frozenset(
+    _BENCHMARK_ENV_LANE_TO_REQUEST_GENERATION_LANE.values()
+) | frozenset({"I2V_TTS_IMAGE_REF"})
 
 # Custom backend writes "Backend ready"; stock uses "To see the GUI go to: "
 MODEL_LOAD_LOG_MSG = ["Backend ready"]
@@ -177,19 +158,24 @@ def _get_benchmark_payload() -> dict:
 
 def _fallback_benchmark_payload() -> dict:
     """Fallback when no custom benchmark workflow; use stock Text2Image modifier."""
-    return {
-        "input": {
-            "request_id": f"bench-{random.randint(1000, 99999)}",
-            "modifier": "Text2Image",
-            "modifications": {
-                "prompt": "a beautiful sunset over mountains, digital art, highly detailed",
-                "width": 512,
-                "height": 512,
-                "steps": 20,
-                "seed": random.randint(0, sys.maxsize),
-            },
-        }
+    inner: dict = {
+        "request_id": f"bench-{random.randint(1000, 99999)}",
+        "modifier": "Text2Image",
+        "modifications": {
+            "prompt": "a beautiful sunset over mountains, digital art, highly detailed",
+            "width": 512,
+            "height": 512,
+            "steps": 20,
+            "seed": random.randint(0, sys.maxsize),
+        },
     }
+    lane = _normalized_benchmark_lane()
+    req_gl = _BENCHMARK_ENV_LANE_TO_REQUEST_GENERATION_LANE.get(lane)
+    if req_gl:
+        inner["generation_lane"] = req_gl
+    elif lane:
+        inner["generation_lane"] = lane
+    return {"input": inner}
 
 
 def request_parser(json_msg: dict) -> dict:
@@ -214,83 +200,57 @@ def _clamp_dynamic_vast_workload(value: float) -> float:
     return max(lo, min(hi, value))
 
 
-def _allow_default_workload_units() -> bool:
-    v = (os.getenv("ALLOW_DEFAULT_WORKLOAD_UNITS") or "").strip().lower()
-    return v in ("1", "true", "yes")
-
-
 def workload_calculator(payload: dict) -> float:
-    """Declared load for Vast routing/scaling — must match bot SDK ``cost=`` for the same lane.
+    """Declared load for Vast routing/scaling — must match bot SDK ``cost=`` for the same request.
 
-    With ``input.generation_lane``: requires ``VAST_WORKLOAD_UNITS_<LANE>`` unless
-    ``ALLOW_DEFAULT_WORKLOAD_UNITS=1`` (local smoke only), then may use
-    ``_DEFAULT_WORKLOAD_UNITS_BY_LANE`` with a warning.
-    Without ``generation_lane``: requires ``VAST_WORKLOAD_UNITS``, unless the same flag allows
-    default ``100`` with a warning.
-    Boot benchmark sets ``generation_lane`` from ``BENCHMARK_GENERATION_LANE`` so units match the lane table.
+    Valid sources (no global ``VAST_WORKLOAD_UNITS`` fallback):
+
+    - Non-empty ``input.vast_workload_units`` (validated float), and/or
+    - ``input.generation_lane`` in the known-lane set plus template ``VAST_WORKLOAD_UNITS_<LANE>``
+      when the body does not carry ``vast_workload_units``.
+
+    If the request omits both a resolvable lane+env pair and valid ``vast_workload_units``, raises
+    ``ValueError`` (client error / invalid payload for this route).
     """
     inp = payload.get("input")
-    if isinstance(inp, dict):
-        lane = _normalize_lane_token(str(inp.get("generation_lane") or ""))
-        if lane:
-            if lane not in _KNOWN_WORKLOAD_LANES:
-                raise ValueError(
-                    f"workload_calculator: unknown generation_lane={lane!r}; "
-                    f"expected one of {sorted(_KNOWN_WORKLOAD_LANES)}"
-                )
-            if lane == "I2V_TTS_IMAGE_REF":
-                raw_dyn = inp.get("vast_workload_units")
-                if raw_dyn is not None and str(raw_dyn).strip() != "":
-                    try:
-                        return _clamp_dynamic_vast_workload(float(raw_dyn))
-                    except (TypeError, ValueError) as e:
-                        raise ValueError(
-                            f"Invalid vast_workload_units={raw_dyn!r}"
-                        ) from e
-            env_key = f"VAST_WORKLOAD_UNITS_{lane}"
-            raw = os.getenv(env_key)
-            if raw is None or str(raw).strip() == "":
-                if _allow_default_workload_units():
-                    fallback = _DEFAULT_WORKLOAD_UNITS_BY_LANE.get(lane)
-                    if fallback is not None:
-                        _log.warning(
-                            "Missing %s for generation_lane=%s; using default %s "
-                            "(ALLOW_DEFAULT_WORKLOAD_UNITS=1; set template env to match bot SDK cost=)",
-                            env_key,
-                            lane,
-                            fallback,
-                        )
-                        return float(fallback)
-                    raise RuntimeError(
-                        f"Missing required environment variable {env_key} "
-                        f"(generation_lane={lane} on request) and no built-in default for this lane"
-                    )
-                raise RuntimeError(
-                    f"Missing required environment variable {env_key} "
-                    f"(generation_lane={lane} on request); set it to match bot SDK cost=, "
-                    f"or set ALLOW_DEFAULT_WORKLOAD_UNITS=1 for local dev only"
-                )
-            try:
-                return float(raw)
-            except ValueError as e:
-                raise ValueError(f"Invalid {env_key}={raw!r}") from e
-    raw = os.getenv("VAST_WORKLOAD_UNITS")
-    if raw is None or str(raw).strip() == "":
-        if _allow_default_workload_units():
-            _log.warning(
-                "Missing VAST_WORKLOAD_UNITS (no input.generation_lane); using default %s "
-                "(ALLOW_DEFAULT_WORKLOAD_UNITS=1)",
-                _DEFAULT_VAST_WORKLOAD_UNITS_GLOBAL,
+    if not isinstance(inp, dict):
+        inp = {}
+
+    lane = _normalize_lane_token(str(inp.get("generation_lane") or ""))
+    raw_dyn = inp.get("vast_workload_units")
+    dynamic_val: float | None = None
+    if raw_dyn is not None and str(raw_dyn).strip() != "":
+        try:
+            dynamic_val = _clamp_dynamic_vast_workload(float(raw_dyn))
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"Invalid vast_workload_units={raw_dyn!r}") from e
+
+    if lane:
+        if lane not in _KNOWN_WORKLOAD_LANES:
+            raise ValueError(
+                f"workload_calculator: unknown generation_lane={lane!r}; "
+                f"expected one of {sorted(_KNOWN_WORKLOAD_LANES)}"
             )
-            return float(_DEFAULT_VAST_WORKLOAD_UNITS_GLOBAL)
-        raise RuntimeError(
-            "Missing VAST_WORKLOAD_UNITS (no input.generation_lane on request); "
-            "set template env or ALLOW_DEFAULT_WORKLOAD_UNITS=1 for local dev only"
-        )
-    try:
-        return float(raw)
-    except ValueError as e:
-        raise ValueError(f"Invalid VAST_WORKLOAD_UNITS={raw!r}") from e
+        if dynamic_val is not None:
+            return dynamic_val
+        env_key = f"VAST_WORKLOAD_UNITS_{lane}"
+        raw = os.getenv(env_key)
+        if raw is None or str(raw).strip() == "":
+            raise ValueError(
+                f"workload_calculator: missing {env_key} for generation_lane={lane!r} "
+                f"and no valid input.vast_workload_units; set template env or send vast_workload_units"
+            )
+        try:
+            return float(raw)
+        except ValueError as e:
+            raise ValueError(f"Invalid {env_key}={raw!r}") from e
+
+    if dynamic_val is not None:
+        return dynamic_val
+    raise ValueError(
+        "workload_calculator: invalid request — input.generation_lane (with template "
+        "VAST_WORKLOAD_UNITS_<LANE>) or input.vast_workload_units is required"
+    )
 
 
 worker_config = WorkerConfig(

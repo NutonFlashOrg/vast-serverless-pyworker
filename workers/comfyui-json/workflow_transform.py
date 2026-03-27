@@ -481,8 +481,8 @@ def transform_app_to_vast(payload: dict) -> dict:
     if vwu is not None and str(vwu).strip() != "":
         try:
             out_input["vast_workload_units"] = float(vwu)
-        except (TypeError, ValueError):
-            pass
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"Invalid vast_workload_units={vwu!r}") from e
     if s3_block:
         out_input["s3"] = s3_block
     return _merge_passthrough({"input": out_input}, payload)
