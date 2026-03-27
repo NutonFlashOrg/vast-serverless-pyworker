@@ -9,16 +9,15 @@ Vast workload calibration on ONE reference GPU (boot or manual).
    ``--prod-runs`` (defaults smaller than bench, e.g. 5).
 3) Prints ``W = baseline * T_prod_p50 / T_bench_p50`` and ``VAST_WORKLOAD_UNITS_<LANE>``.
 
-**Template lane → manifest key** (must exist in manifest JSON):
+**BENCHMARK_GENERATION_LANE → manifest key** (must exist in manifest JSON):
 
-- ``I2I_4090`` → ``I2I_4090``
-- ``I2V_5090_5SEC`` / ``I2V_5090_10SEC`` / ``I2V_5090_15SEC`` → same key
-- ``I2V_5090_FREE`` (prod template) → ``I2V_5090_5SEC``
-- ``I2V_5090_PAID`` (prod template) → ``I2V_5090_15SEC`` (matches PyWorker 15s bench graph)
+- ``FLUX2_4090`` → ``I2I_4090``
+- ``WAN22_5090`` / ``WAN22_5090_{5,10,15}SEC`` → matching ``I2V_5090_*`` manifest key
+- ``LTX23_5090`` / ``LTX23_5090_AI2V`` → ``LTX23_5090_AI2V``
 
 If ``BENCHMARK_GENERATION_LANE`` is **unset**, runs **all** manifest entries (handy for
 one-off local runs). Vast benchmark templates always set the lane → **one** prod JSON.
-Use ``--all-manifest-lanes`` to force all manifest entries even when the env var is set.
+Use ``--all-manifest-lanes`` to time every manifest entry even when the env var is set.
 
 Manifest example (JSON file):
   {
@@ -29,7 +28,8 @@ Manifest example (JSON file):
 
 Each prod file: {"input": {"workflow": {...}, "user_id", "generation_id", "input_images", ...}}
 (bot-shaped). ``input_images`` may use ``{"from_env_benchmark_image": true, "title": "…"}``;
-resolved at run time from ``BENCHMARK_IMAGE_*`` / ``S3_*`` (same as PyWorker benchmark).
+``input_audio`` may use ``{"from_env_benchmark_audio": true}`` — resolved from
+``BENCHMARK_AUDIO_*`` / ``S3_*``.
 
 Requires: backend on CALIBRATE_BACKEND_URL; same env as worker for benchmark + S3.
 """
@@ -166,14 +166,15 @@ def _normalize_lane(s: str) -> str:
     return (s or "").strip().upper().replace(" ", "_")
 
 
-# BENCHMARK_GENERATION_LANE (template) → manifest / bot generation_lane key for prod JSON.
+# BENCHMARK_GENERATION_LANE (template / calibration) → manifest key (= bot generation_lane for prod JSON).
 _BENCH_LANE_TO_PROD_MANIFEST_KEY: dict[str, str] = {
-    "I2I_4090": "I2I_4090",
-    "I2V_5090_5SEC": "I2V_5090_5SEC",
-    "I2V_5090_10SEC": "I2V_5090_10SEC",
-    "I2V_5090_15SEC": "I2V_5090_15SEC",
-    "I2V_5090_FREE": "I2V_5090_5SEC",
-    "I2V_5090_PAID": "I2V_5090_15SEC",
+    "FLUX2_4090": "I2I_4090",
+    "WAN22_5090_5SEC": "I2V_5090_5SEC",
+    "WAN22_5090_10SEC": "I2V_5090_10SEC",
+    "WAN22_5090_15SEC": "I2V_5090_15SEC",
+    "WAN22_5090": "I2V_5090_5SEC",
+    "LTX23_5090": "LTX23_5090_AI2V",
+    "LTX23_5090_AI2V": "LTX23_5090_AI2V",
 }
 
 
@@ -222,6 +223,43 @@ def _hydrate_benchmark_input_images(inp: dict) -> None:
                 )
             out.append(e)
     inp["input_images"] = out
+
+
+def _hydrate_benchmark_input_audio(inp: dict) -> None:
+    """Replace ``from_env_benchmark_audio`` entries with real bucket/key from env."""
+    auds = inp.get("input_audio")
+    if not isinstance(auds, list) or not auds:
+        return
+    bucket = (
+        os.getenv("BENCHMARK_AUDIO_BUCKET")
+        or os.getenv("S3_BUCKET")
+        or os.getenv("S3_BUCKET_NAME")
+        or ""
+    ).strip()
+    key = (os.getenv("BENCHMARK_AUDIO_KEY") or "").strip()
+    out: list[dict] = []
+    for i, e in enumerate(auds):
+        if not isinstance(e, dict):
+            out.append(e)
+            continue
+        if e.get("from_env_benchmark_audio"):
+            if not bucket or not key:
+                raise RuntimeError(
+                    "Calibration JSON uses from_env_benchmark_audio but BENCHMARK_AUDIO_KEY "
+                    "and S3 bucket (BENCHMARK_AUDIO_BUCKET or S3_BUCKET or S3_BUCKET_NAME) are not set"
+                )
+            ne = {"bucket": bucket, "key": key, "kind": "audio"}
+            t = (e.get("title") or "").strip()
+            if t:
+                ne["title"] = t
+            out.append(ne)
+        else:
+            if not e.get("bucket") or not e.get("key"):
+                raise RuntimeError(
+                    f"input_audio[{i}] missing bucket/key and not from_env_benchmark_audio"
+                )
+            out.append(e)
+    inp["input_audio"] = out
 
 
 def main() -> int:
@@ -288,7 +326,7 @@ def main() -> int:
     p.add_argument(
         "--all-manifest-lanes",
         action="store_true",
-        help="Run prod series for every manifest entry (legacy; ignores template lane)",
+        help="Run prod series for every manifest entry (ignores template lane filter)",
     )
     args = p.parse_args()
 
@@ -344,7 +382,7 @@ def main() -> int:
 
     if args.all_manifest_lanes:
         print(
-            "=== Calibration mode: ALL manifest lanes (legacy --all-manifest-lanes) ===",
+            "=== Calibration mode: ALL manifest lanes (--all-manifest-lanes) ===",
             flush=True,
         )
     elif bench_lane_hint:
@@ -435,6 +473,7 @@ def main() -> int:
             body_inp = copy.deepcopy(_template)
             body_inp["generation_lane"] = _lane
             _hydrate_benchmark_input_images(body_inp)
+            _hydrate_benchmark_input_audio(body_inp)
             wf = body_inp.get("workflow")
             if isinstance(wf, dict):
                 randomize_workflow_seeds(wf)

@@ -1,6 +1,6 @@
 """
 Transform app request format to Vast /generate/sync format.
-Aligns with RunPod serverless: client sends workflow + S3 refs, worker downloads,
+Aligns with bot job contract: client sends workflow + S3 refs, worker downloads,
 injects base64, patches, forwards to backend for execution, watermarking, S3 upload.
 
 Accepts: {workflow, input_images, user_id, generation_id, watermark_enabled?, watermark_filename?, ...}
@@ -14,6 +14,7 @@ import logging
 import os
 import random
 import re
+import shutil
 import uuid
 from io import BytesIO
 from pathlib import Path
@@ -187,11 +188,23 @@ def _make_job_subdir(user_id: str, generation_id: str, job_id: str | None) -> st
     )
 
 
+def _input_entry_kind(entry: dict, index: int) -> str:
+    """``image`` (default) or ``audio`` from explicit ``kind`` or file extension."""
+    raw = (entry.get("kind") or "").strip().lower()
+    if raw in ("audio", "image"):
+        return raw
+    key = str(entry.get("key") or "")
+    ext = Path(key).suffix.lower()
+    if ext in (".wav", ".flac", ".mp3", ".ogg", ".m4a", ".aac"):
+        return "audio"
+    return "image"
+
+
 def _download_input_images(
     input_images: list[dict],
     input_dir: Path,
-) -> list[tuple[str, Path]]:
-    """Download images from S3. Returns [(title, path), ...]."""
+) -> tuple[list[tuple[str, Path]], list[tuple[str, Path]]]:
+    """Download S3 objects from ``input_images``. Returns (image_rows, audio_rows) as [(title, path), ...]."""
     import boto3
 
     try:
@@ -219,23 +232,115 @@ def _download_input_images(
         config=build_s3_boto_config(signature_version="s3v4"),
     )
     input_dir.mkdir(parents=True, exist_ok=True)
-    results: list[tuple[str, Path]] = []
+    images: list[tuple[str, Path]] = []
+    audios: list[tuple[str, Path]] = []
     for i, entry in enumerate(input_images):
         bucket = entry.get("bucket")
         key = entry.get("key")
         title = (entry.get("title") or "").strip()
         if not bucket or not key:
             raise RuntimeError(f"input_images[{i}] missing bucket or key")
-        ext = Path(key).suffix or ".jpg"
+        kind = _input_entry_kind(entry, i)
+        ext = Path(key).suffix or (".wav" if kind == "audio" else ".jpg")
         safe_name = _safe_component(title) if title else f"input_{i}"
         local_path = (input_dir / f"{safe_name}{ext}").resolve()
         if not str(local_path).startswith(str(input_dir.resolve())):
             raise RuntimeError("Invalid input path traversal")
         with S3_IO_SEM:
             download_file_with_retry(client, bucket, key, str(local_path))
-        logger.info("Downloaded %s/%s -> %s", bucket, key, local_path)
-        results.append((title, local_path))
-    return results
+        logger.info("Downloaded %s/%s -> %s (%s)", bucket, key, local_path, kind)
+        row = (title, local_path)
+        if kind == "audio":
+            audios.append(row)
+        else:
+            images.append(row)
+    return images, audios
+
+
+def _comfy_input_root() -> Path:
+    return Path(
+        os.getenv("COMFY_INPUT_ROOT")
+        or os.getenv("COMFY_INPUT_DIR")
+        or "/app/input"
+    )
+
+
+def _tts_ref_audio_basename() -> str:
+    return (os.getenv("TTS_REF_AUDIO_BASENAME") or "tts_ref_input.wav").strip() or "tts_ref_input.wav"
+
+
+def _stage_audio_for_comfy(local_audio: Path, run_subdir: str, dest_name: str) -> None:
+    """Copy processed WAV into ComfyUI input tree: ``/app/input/{run_subdir}/{dest_name}``."""
+    base = _comfy_input_root() / run_subdir.strip("/").replace("\\", "/")
+    base.mkdir(parents=True, exist_ok=True)
+    dest = (base / dest_name).resolve()
+    root = _comfy_input_root().resolve()
+    if not str(dest).startswith(str(root)):
+        raise RuntimeError("Invalid comfy input path traversal")
+    shutil.copy2(local_audio, dest)
+    logger.info("Staged audio for Comfy: %s", dest)
+
+
+def _patch_load_audio_nodes(
+    wf: dict,
+    filename: str,
+    subfolder: str,
+    *,
+    title_match: str | None,
+) -> None:
+    """Point ``LoadAudio`` nodes at staged file under ``subfolder``.
+
+    If ``title_match`` is set, patch only matching ``_meta.title``.
+    If unset, patch only the **first** LoadAudio node.
+    """
+    first_only = not (title_match and title_match.strip())
+    patched_any = False
+    for node in wf.values():
+        if not isinstance(node, dict):
+            continue
+        ct = str(node.get("class_type") or "")
+        if ct != "LoadAudio" and not ct.endswith("LoadAudio"):
+            continue
+        meta = (node.get("_meta") or {}) if isinstance(node.get("_meta"), dict) else {}
+        ntitle = str(meta.get("title") or "").strip()
+        if title_match and title_match.strip():
+            if ntitle != title_match.strip():
+                continue
+        elif first_only and patched_any:
+            continue
+        tin = node.setdefault("inputs", {})
+        patched_key = False
+        for key in ("audio", "audio_file", "file", "path", "upload"):
+            if key in tin:
+                tin[key] = filename
+                patched_key = True
+                break
+        if not patched_key:
+            tin["audio"] = filename
+        for folder_key in ("subfolder", "audio_folder", "folder"):
+            if folder_key in tin:
+                tin[folder_key] = subfolder
+                break
+        patched_any = True
+
+
+def _replace_first_quoted_segment(prompt_template: str, spoken_text: str) -> str:
+    """Replace text inside first double-quoted segment, keep surrounding template.
+
+    Example:
+    ... Exact line:
+    "old text"
+    ->
+    ... Exact line:
+    "new text"
+    """
+    start = prompt_template.find('"')
+    if start < 0:
+        return spoken_text
+    end = prompt_template.find('"', start + 1)
+    if end < 0:
+        return spoken_text
+    return f"{prompt_template[: start + 1]}{spoken_text}{prompt_template[end:]}"
 
 
 def _patch_workflow(
@@ -243,8 +348,10 @@ def _patch_workflow(
     run_subdir: str,
     job_input: dict,
     downloaded_images: list[tuple[str, Path]],
+    *,
+    audio_local: Path | None = None,
 ) -> dict:
-    """Patch workflow: sageattn, VHS_VideoCombine, ETN_LoadImageBase64, prompt."""
+    """Patch workflow: sageattn, VHS_VideoCombine, ETN_LoadImageBase64, prompt, LoadAudio."""
     wf = copy.deepcopy(workflow)
     for node in wf.values():
         if (
@@ -283,8 +390,16 @@ def _patch_workflow(
                 if (
                     (node.get("_meta") or {}).get("title") or ""
                 ).strip() == prompt_title:
-                    node.setdefault("inputs", {})["text"] = user_prompt
+                    cur_text = str((node.get("inputs") or {}).get("text") or "")
+                    node.setdefault("inputs", {})["text"] = _replace_first_quoted_segment(
+                        cur_text, user_prompt
+                    )
                     break
+    if audio_local is not None and audio_local.exists():
+        dest_name = _tts_ref_audio_basename()
+        _stage_audio_for_comfy(audio_local, run_subdir, dest_name)
+        audio_title = (job_input.get("audio_node_title") or "").strip() or None
+        _patch_load_audio_nodes(wf, dest_name, run_subdir, title_match=audio_title)
     return wf
 
 
@@ -300,17 +415,43 @@ def transform_app_to_vast(payload: dict) -> dict:
     if not isinstance(workflow, dict):
         return _merge_passthrough(payload, payload)
     input_images = (inp.get("input_images") or []) if isinstance(inp, dict) else []
+    input_audio = (inp.get("input_audio") or []) if isinstance(inp, dict) else []
     user_id = str(inp.get("user_id") or "")
     generation_id = str(inp.get("generation_id") or "")
     job_id = str(payload.get("id") or inp.get("request_id") or "")
     request_id = job_id or str(uuid.uuid4())
     run_subdir = _make_job_subdir(user_id, generation_id, job_id)
     job_input = dict(inp) if isinstance(inp, dict) else {}
-    downloaded: list[tuple[str, Path]] = []
-    if input_images:
+    downloaded_images: list[tuple[str, Path]] = []
+    audio_local: Path | None = None
+    download_entries: list[dict] = []
+    for e in input_images:
+        if isinstance(e, dict):
+            download_entries.append(e)
+    for e in input_audio:
+        if isinstance(e, dict):
+            row = dict(e)
+            row.setdefault("kind", "audio")
+            download_entries.append(row)
+
+    if download_entries:
         input_dir = Path("/tmp/input") / run_subdir
-        downloaded = _download_input_images(input_images, input_dir)
-    patched = _patch_workflow(workflow, run_subdir, job_input, downloaded)
+        downloaded_images, downloaded_audios = _download_input_images(
+            download_entries, input_dir
+        )
+        if downloaded_audios:
+            audio_local = downloaded_audios[0][1]
+            if len(downloaded_audios) > 1:
+                logger.warning(
+                    "Multiple audio inputs; using first only (%s)", downloaded_audios[0][0]
+                )
+    patched = _patch_workflow(
+        workflow,
+        run_subdir,
+        job_input,
+        downloaded_images,
+        audio_local=audio_local,
+    )
     randomize_workflow_seeds(patched)
     s3_cfg = _get_s3_config()
     s3_block = {}
@@ -336,6 +477,12 @@ def transform_app_to_vast(payload: dict) -> dict:
     gl = (job_input.get("generation_lane") or "").strip()
     if gl:
         out_input["generation_lane"] = gl
+    vwu = job_input.get("vast_workload_units")
+    if vwu is not None and str(vwu).strip() != "":
+        try:
+            out_input["vast_workload_units"] = float(vwu)
+        except (TypeError, ValueError):
+            pass
     if s3_block:
         out_input["s3"] = s3_block
     return _merge_passthrough({"input": out_input}, payload)

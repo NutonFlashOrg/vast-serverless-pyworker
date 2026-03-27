@@ -218,7 +218,7 @@ if ! cd "$SERVER_DIR"; then
 fi
 
 # Optional: light benchmark (CALIBRATION_RUNS) + matching prod JSON from manifest (CALIBRATION_PROD_RUNS).
-# Template BENCHMARK_GENERATION_LANE selects a single manifest lane; set CALIBRATION_ALL_MANIFEST_LANES=1 for legacy all-lane mode.
+# Template BENCHMARK_GENERATION_LANE selects a single manifest row; set CALIBRATION_ALL_MANIFEST_LANES=1 to time every manifest row.
 # Requires PYWORKER_REPO with scripts/calibrate_vast_workload_multi_lane.py or calibrate_workload_timing.py.
 # See comfy-vast-serverless/docs/VAST_BENCHMARK_LANES_AND_BOT_COST.md
 if [ "${RUN_WORKLOAD_CALIBRATION:-}" = "1" ] || [ "${RUN_WORKLOAD_CALIBRATION:-}" = "true" ]; then
@@ -262,7 +262,7 @@ if [ "${RUN_WORKLOAD_CALIBRATION:-}" = "1" ] || [ "${RUN_WORKLOAD_CALIBRATION:-}
     else
         CAL_SCRIPT="${SERVER_DIR}/scripts/calibrate_workload_timing.py"
         if [ -f "$CAL_SCRIPT" ]; then
-            echo "[calibration] RUN_WORKLOAD_CALIBRATION=1 legacy ${CAL_SCRIPT} (set CALIBRATION_MANIFEST for prod JSON manifest mode)"
+            echo "[calibration] RUN_WORKLOAD_CALIBRATION=1 ${CAL_SCRIPT} (set CALIBRATION_MANIFEST for prod JSON manifest mode)"
             CAL_ARGS=(python3 "$CAL_SCRIPT" --backend-url "$CAL_URL" --runs "$CAL_RUNS" --warmup "$CAL_WARM" --baseline "$CAL_BASE")
             if [ -n "${CALIBRATION_PROD_PAYLOAD:-}" ] && [ -f "${CALIBRATION_PROD_PAYLOAD}" ]; then
                 CAL_ARGS+=(--prod-payload "${CALIBRATION_PROD_PAYLOAD}")

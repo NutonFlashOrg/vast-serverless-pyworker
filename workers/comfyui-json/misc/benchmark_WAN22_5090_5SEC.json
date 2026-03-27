@@ -39,7 +39,7 @@
     "inputs": {
       "shift": 8,
       "model": [
-        "246",
+        "83",
         0
       ]
     },
@@ -59,6 +59,34 @@
     "class_type": "ModelSamplingSD3",
     "_meta": {
       "title": "ModelSamplingSD3"
+    }
+  },
+  "83": {
+    "inputs": {
+      "sage_attention": "auto",
+      "allow_compile": true,
+      "model": [
+        "246",
+        0
+      ]
+    },
+    "class_type": "PathchSageAttentionKJ",
+    "_meta": {
+      "title": "Patch Sage Attention KJ"
+    }
+  },
+  "85": {
+    "inputs": {
+      "sage_attention": "auto",
+      "allow_compile": true,
+      "model": [
+        "245",
+        0
+      ]
+    },
+    "class_type": "PathchSageAttentionKJ",
+    "_meta": {
+      "title": "Patch Sage Attention KJ"
     }
   },
   "63": {
@@ -344,7 +372,7 @@
       "lora_name": "W22_LN_i2v_POV_Missionary_Insertion_v1.safetensors",
       "strength_model": 0.7,
       "model": [
-        "245",
+        "85",
         0
       ]
     },

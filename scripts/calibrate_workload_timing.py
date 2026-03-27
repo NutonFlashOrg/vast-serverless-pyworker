@@ -12,6 +12,7 @@ Use this instead of hand-recording Vast startup benchmarks across many instances
 Requires:
   - Backend listening (default http://127.0.0.1:8189), same as MODEL_SERVER_URL:MODEL_SERVER_PORT.
   - Env vars for the lane: BENCHMARK_GENERATION_LANE, BENCHMARK_IMAGE_*, S3_* (same as worker).
+  - LTX lanes (`LTX23_*`): also `BENCHMARK_AUDIO_*` (or bucket/key via `S3_*`) so benchmark audio downloads.
 
 Does not start PyWorker; imports workers/comfyui-json/worker.py for _get_benchmark_payload only
 (worker module must not call Worker.run() on import — see __main__ guard in worker.py).

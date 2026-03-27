@@ -102,19 +102,15 @@ Images will be saved locally AND uploaded to `s3://{bucket}/comfyui/{filename}`.
 
 ## Benchmarking
 
-### Custom Benchmark Workflows
+### Custom benchmark workflows
 
-You can provide a custom ComfyUI workflow for benchmarking by creating `workers/comfyui-json/misc/benchmark.json`. This allows you to test performance using your preferred models and workflow complexity.
+Add JSON under `workers/comfyui-json/misc/` as **`benchmark_<MODEL>_<…>.json`** (e.g. `benchmark_FLUX2_4090.json`, `benchmark_WAN22_5090_5SEC.json`). The Vast template sets **`BENCHMARK_GENERATION_LANE`** to select which file the worker loads (see `worker._DEFAULT_BENCHMARK_FILES`). Alternatively set **`BENCHMARK_WORKFLOW_FILE`** to a filename in `misc/`.
 
-**Ways to provide the benchmark file:**
-- Fork this repository and add your `benchmark.json` file
-- Write the file during worker provisioning (onstart script or setup phase)
+To ensure varied generations, use the placeholder `__RANDOM_INT__` in place of static seed values where applicable.
 
-An example file is provided in the repository. To ensure varied generations, use the placeholder `__RANDOM_INT__` in place of static seed values - it will be replaced with a random integer for each benchmark run.
+### Fallback benchmark
 
-### Default Benchmark (Fallback)
-
-If `benchmark.json` is not available, a simple image generation benchmark runs when each worker initializes. This validates GPU performance and helps identify underperforming machines.
+If no lane file is found (unset lane, unknown lane, or missing file), the worker uses a minimal **Text2Image** benchmark when each instance initializes.
 
 The default benchmark uses Stable Diffusion v1.5 with ComfyUI's standard text-to-image workflow. Configure it using these environment variables:
 
