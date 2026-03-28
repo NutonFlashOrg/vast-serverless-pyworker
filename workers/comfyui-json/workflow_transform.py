@@ -53,8 +53,15 @@ def _random_uint32_seed() -> int:
     return random.getrandbits(32)
 
 
+def _random_reserved_vram_seed() -> int:
+    """ComfyUI-ReservedVRAM ``seed`` max is ``2**50`` (see node INPUT_TYPES); uint64 fails validation."""
+    return random.randint(0, 2**50 - 1)
+
+
 # class_type values whose ``seed`` / ``*_seed`` inputs must stay in uint32 range
 _UINT32_SEED_CLASS_TYPES = frozenset({"SeedVR2VideoUpscaler"})
+# class_type values whose ``seed`` is capped below uint64 (custom node validation)
+_FIFTY_BIT_SEED_CLASS_TYPES = frozenset({"ReservedVRAMSetter"})
 
 
 def _random_primitive_int_seed() -> int:
@@ -104,6 +111,17 @@ def randomize_workflow_seeds(workflow: dict | None) -> None:
                     inputs[key] = _random_uint32_seed()
                 elif isinstance(val, float):
                     inputs[key] = float(_random_uint32_seed())
+                elif isinstance(val, list) and val:
+                    ref = val[0]
+                    sid = str(ref) if ref is not None else ""
+                    if sid and sid in workflow:
+                        linked_primitive_ids.add(sid)
+                continue
+            if cls in _FIFTY_BIT_SEED_CLASS_TYPES:
+                if isinstance(val, int):
+                    inputs[key] = _random_reserved_vram_seed()
+                elif isinstance(val, float):
+                    inputs[key] = float(_random_reserved_vram_seed())
                 elif isinstance(val, list) and val:
                     ref = val[0]
                     sid = str(ref) if ref is not None else ""
