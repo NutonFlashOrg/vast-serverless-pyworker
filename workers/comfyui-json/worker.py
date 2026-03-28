@@ -136,8 +136,9 @@ def _get_benchmark_payload() -> dict:
             or os.getenv("S3_BUCKET")
             or os.getenv("S3_BUCKET_NAME")
         )
-        akey = (os.getenv("BENCHMARK_AUDIO_KEY") or "").strip()
-        if abucket and akey:
+        # Same default object as upload_benchmark_audio.sh / template provision.
+        akey = (os.getenv("BENCHMARK_AUDIO_KEY") or "").strip() or "benchmarks/benchmark_source.wav"
+        if abucket:
             bench_input["input_audio"] = [{"bucket": abucket, "key": akey}]
     req_gl = _BENCHMARK_ENV_LANE_TO_REQUEST_GENERATION_LANE.get(lane)
     if req_gl:

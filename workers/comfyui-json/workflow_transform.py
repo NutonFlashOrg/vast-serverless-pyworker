@@ -283,8 +283,20 @@ def _comfy_input_root() -> Path:
     )
 
 
-def _tts_ref_audio_basename() -> str:
-    return (os.getenv("TTS_REF_AUDIO_BASENAME") or "tts_ref_input.wav").strip() or "tts_ref_input.wav"
+def _first_input_audio_staged_basename(input_audio: list) -> str | None:
+    """Use object key filename for Comfy input (matches ``BENCHMARK_AUDIO_KEY`` last segment)."""
+    for i, e in enumerate(input_audio):
+        if not isinstance(e, dict):
+            continue
+        if _input_entry_kind(e, i) != "audio":
+            continue
+        key = str(e.get("key") or "").strip()
+        if not key:
+            continue
+        name = Path(key).name
+        safe = _safe_component(name)
+        return safe or None
+    return None
 
 
 def _stage_audio_for_comfy(local_audio: Path, run_subdir: str, dest_name: str) -> None:
@@ -335,10 +347,16 @@ def _patch_load_audio_nodes(
                 break
         if not patched_key:
             tin["audio"] = filename
+        # Staged files live under input/{run_subdir}/; Comfy LoadAudio defaults to input root if
+        # subfolder is omitted, which breaks validation (file not found at /app/input/<filename>).
+        set_subfolder = False
         for folder_key in ("subfolder", "audio_folder", "folder"):
             if folder_key in tin:
                 tin[folder_key] = subfolder
+                set_subfolder = True
                 break
+        if not set_subfolder:
+            tin["subfolder"] = subfolder
         patched_any = True
 
 
@@ -368,6 +386,7 @@ def _patch_workflow(
     downloaded_images: list[tuple[str, Path]],
     *,
     audio_local: Path | None = None,
+    audio_staged_basename: str | None = None,
 ) -> dict:
     """Patch workflow: sageattn, VHS_VideoCombine, ETN_LoadImageBase64, prompt, LoadAudio."""
     wf = copy.deepcopy(workflow)
@@ -414,7 +433,14 @@ def _patch_workflow(
                     )
                     break
     if audio_local is not None and audio_local.exists():
-        dest_name = _tts_ref_audio_basename()
+        raw = (audio_staged_basename or "").strip() or _safe_component(audio_local.name)
+        dest_name = Path(raw).name
+        if not dest_name or dest_name in (".", ".."):
+            raise RuntimeError(
+                "Cannot derive staged audio filename: set input_audio[].key (S3 object key) "
+                f"or use a valid local path; got staged_basename={audio_staged_basename!r}, "
+                f"local={audio_local}"
+            )
         _stage_audio_for_comfy(audio_local, run_subdir, dest_name)
         audio_title = (job_input.get("audio_node_title") or "").strip() or None
         _patch_load_audio_nodes(wf, dest_name, run_subdir, title_match=audio_title)
@@ -463,12 +489,16 @@ def transform_app_to_vast(payload: dict) -> dict:
                 logger.warning(
                     "Multiple audio inputs; using first only (%s)", downloaded_audios[0][0]
                 )
+    audio_staged = _first_input_audio_staged_basename(
+        [e for e in input_audio if isinstance(e, dict)]
+    )
     patched = _patch_workflow(
         workflow,
         run_subdir,
         job_input,
         downloaded_images,
         audio_local=audio_local,
+        audio_staged_basename=audio_staged,
     )
     randomize_workflow_seeds(patched)
     s3_cfg = _get_s3_config()
