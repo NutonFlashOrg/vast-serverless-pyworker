@@ -299,26 +299,45 @@ def _first_input_audio_staged_basename(input_audio: list) -> str | None:
     return None
 
 
-def _stage_audio_for_comfy(local_audio: Path, run_subdir: str, dest_name: str) -> None:
-    """Copy processed WAV into ComfyUI input tree: ``/app/input/{run_subdir}/{dest_name}``."""
-    base = _comfy_input_root() / run_subdir.strip("/").replace("\\", "/")
+def _stage_audio_for_comfy(local_audio: Path, dest_name: str, *, subfolder: str) -> None:
+    """Copy WAV to ``/app/input/{subfolder}/{dest_name}`` (``subfolder`` may contain slashes)."""
+    root = _comfy_input_root().resolve()
+    rel = str(subfolder).strip().strip("/").replace("\\", "/")
+    base = (root / rel).resolve() if rel else root
+    if not str(base).startswith(str(root)):
+        raise RuntimeError("Invalid comfy input path traversal")
     base.mkdir(parents=True, exist_ok=True)
     dest = (base / dest_name).resolve()
-    root = _comfy_input_root().resolve()
     if not str(dest).startswith(str(root)):
         raise RuntimeError("Invalid comfy input path traversal")
     shutil.copy2(local_audio, dest)
     logger.info("Staged audio for Comfy: %s", dest)
 
 
+def _comfy_load_audio_combo_value(run_subdir: str, dest_name: str) -> str:
+    """Value for ``LoadAudio.inputs.audio``: path relative to Comfy input dir, forward slashes.
+
+    Upstream ComfyUI resolves this with ``folder_paths.get_annotated_filepath`` →
+    ``os.path.join(get_input_directory(), name)``, so ``name`` may include subdirectories
+    (see ``comfy_extras/nodes_audio.py`` ``LoadAudio`` + ``folder_paths.annotated_filepath``).
+    """
+    sub = str(run_subdir or "").strip().strip("/").replace("\\", "/")
+    fn = Path(dest_name).name
+    if not fn or fn in (".", ".."):
+        raise ValueError("invalid audio dest_name")
+    return f"{sub}/{fn}" if sub else fn
+
+
 def _patch_load_audio_nodes(
     wf: dict,
-    filename: str,
-    subfolder: str,
+    audio_under_input: str,
     *,
     title_match: str | None,
 ) -> None:
-    """Point ``LoadAudio`` nodes at staged file under ``subfolder``.
+    """Set ``LoadAudio`` widget to ``audio_under_input`` (relative to Comfy ``input/``).
+
+    Strips GUI-only keys and legacy ``subfolder`` / ``folder`` widgets; current upstream
+    ``LoadAudio`` uses a single combo string, not separate subfolder inputs.
 
     If ``title_match`` is set, patch only matching ``_meta.title``.
     If unset, patch only the **first** LoadAudio node.
@@ -339,24 +358,18 @@ def _patch_load_audio_nodes(
         elif first_only and patched_any:
             continue
         tin = node.setdefault("inputs", {})
+        for ui_key in ("audioUI", "audio_ui"):
+            tin.pop(ui_key, None)
+        for folder_key in ("subfolder", "audio_folder", "folder"):
+            tin.pop(folder_key, None)
         patched_key = False
         for key in ("audio", "audio_file", "file", "path", "upload"):
             if key in tin:
-                tin[key] = filename
+                tin[key] = audio_under_input
                 patched_key = True
                 break
         if not patched_key:
-            tin["audio"] = filename
-        # Staged files live under input/{run_subdir}/; Comfy LoadAudio defaults to input root if
-        # subfolder is omitted, which breaks validation (file not found at /app/input/<filename>).
-        set_subfolder = False
-        for folder_key in ("subfolder", "audio_folder", "folder"):
-            if folder_key in tin:
-                tin[folder_key] = subfolder
-                set_subfolder = True
-                break
-        if not set_subfolder:
-            tin["subfolder"] = subfolder
+            tin["audio"] = audio_under_input
         patched_any = True
 
 
@@ -441,9 +454,10 @@ def _patch_workflow(
                 f"or use a valid local path; got staged_basename={audio_staged_basename!r}, "
                 f"local={audio_local}"
             )
-        _stage_audio_for_comfy(audio_local, run_subdir, dest_name)
+        _stage_audio_for_comfy(audio_local, dest_name, subfolder=run_subdir)
+        audio_combo = _comfy_load_audio_combo_value(run_subdir, dest_name)
         audio_title = (job_input.get("audio_node_title") or "").strip() or None
-        _patch_load_audio_nodes(wf, dest_name, run_subdir, title_match=audio_title)
+        _patch_load_audio_nodes(wf, audio_combo, title_match=audio_title)
     return wf
 
 
