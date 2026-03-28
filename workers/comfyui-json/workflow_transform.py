@@ -492,10 +492,11 @@ def transform_app_to_vast(payload: dict) -> dict:
             row.setdefault("kind", "audio")
             download_entries.append(row)
 
+    scratch_dir: Path | None = None
     if download_entries:
-        input_dir = Path("/tmp/input") / run_subdir
+        scratch_dir = Path("/tmp/input") / run_subdir
         downloaded_images, downloaded_audios = _download_input_images(
-            download_entries, input_dir
+            download_entries, scratch_dir
         )
         if downloaded_audios:
             audio_local = downloaded_audios[0][1]
@@ -503,48 +504,68 @@ def transform_app_to_vast(payload: dict) -> dict:
                 logger.warning(
                     "Multiple audio inputs; using first only (%s)", downloaded_audios[0][0]
                 )
-    audio_staged = _first_input_audio_staged_basename(
-        [e for e in input_audio if isinstance(e, dict)]
-    )
-    patched = _patch_workflow(
-        workflow,
-        run_subdir,
-        job_input,
-        downloaded_images,
-        audio_local=audio_local,
-        audio_staged_basename=audio_staged,
-    )
-    randomize_workflow_seeds(patched)
-    s3_cfg = _get_s3_config()
-    s3_block = {}
-    if s3_cfg:
-        s3_block = {
-            "access_key_id": s3_cfg["access_key_id"],
-            "secret_access_key": s3_cfg["secret_access_key"],
-            "endpoint_url": s3_cfg["endpoint_url"],
-            "bucket_name": s3_cfg["bucket"],
-            "region": s3_cfg["region"],
+
+    try:
+        audio_staged = _first_input_audio_staged_basename(
+            [e for e in input_audio if isinstance(e, dict)]
+        )
+        patched = _patch_workflow(
+            workflow,
+            run_subdir,
+            job_input,
+            downloaded_images,
+            audio_local=audio_local,
+            audio_staged_basename=audio_staged,
+        )
+        randomize_workflow_seeds(patched)
+        s3_cfg = _get_s3_config()
+        s3_block = {}
+        if s3_cfg:
+            s3_block = {
+                "access_key_id": s3_cfg["access_key_id"],
+                "secret_access_key": s3_cfg["secret_access_key"],
+                "endpoint_url": s3_cfg["endpoint_url"],
+                "bucket_name": s3_cfg["bucket"],
+                "region": s3_cfg["region"],
+            }
+        out_input: dict = {
+            "request_id": request_id,
+            "workflow_json": patched,
+            "run_subdir": run_subdir,
+            "user_id": user_id,
+            "generation_id": generation_id,
+            "timeout": int(job_input.get("timeout", 600)),
+            "watermark_enabled": bool(job_input.get("watermark_enabled", True)),
+            "watermark_filename": (job_input.get("watermark_filename") or "").strip()
+            or None,
         }
-    out_input: dict = {
-        "request_id": request_id,
-        "workflow_json": patched,
-        "run_subdir": run_subdir,
-        "user_id": user_id,
-        "generation_id": generation_id,
-        "timeout": int(job_input.get("timeout", 600)),
-        "watermark_enabled": bool(job_input.get("watermark_enabled", True)),
-        "watermark_filename": (job_input.get("watermark_filename") or "").strip()
-        or None,
-    }
-    gl = (job_input.get("generation_lane") or "").strip()
-    if gl:
-        out_input["generation_lane"] = gl
-    vwu = job_input.get("vast_workload_units")
-    if vwu is not None and str(vwu).strip() != "":
-        try:
-            out_input["vast_workload_units"] = float(vwu)
-        except (TypeError, ValueError) as e:
-            raise ValueError(f"Invalid vast_workload_units={vwu!r}") from e
-    if s3_block:
-        out_input["s3"] = s3_block
-    return _merge_passthrough({"input": out_input}, payload)
+        gl = (job_input.get("generation_lane") or "").strip()
+        if gl:
+            out_input["generation_lane"] = gl
+        vwu = job_input.get("vast_workload_units")
+        if vwu is not None and str(vwu).strip() != "":
+            try:
+                out_input["vast_workload_units"] = float(vwu)
+            except (TypeError, ValueError) as e:
+                raise ValueError(f"Invalid vast_workload_units={vwu!r}") from e
+        if s3_block:
+            out_input["s3"] = s3_block
+        return _merge_passthrough({"input": out_input}, payload)
+    finally:
+        if scratch_dir is not None:
+            _cleanup_worker_s3_scratch(scratch_dir)
+
+
+def _cleanup_worker_s3_scratch(scratch_dir: Path) -> None:
+    """Remove per-job directory under ``/tmp/input`` after S3 downloads are inlined / copied."""
+    try:
+        base = Path("/tmp/input").resolve()
+        job = scratch_dir.resolve()
+        if not str(job).startswith(str(base)):
+            logger.warning("Skip scratch cleanup (path outside /tmp/input): %s", scratch_dir)
+            return
+        if job.exists():
+            shutil.rmtree(job, ignore_errors=True)
+            logger.info("Cleaned pyworker S3 download scratch: %s", job)
+    except Exception as e:
+        logger.warning("Failed to cleanup pyworker scratch %s: %s", scratch_dir, e)
