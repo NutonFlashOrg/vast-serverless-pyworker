@@ -618,7 +618,7 @@
       "nag_tau": 2.5,
       "inplace": true,
       "model": [
-        "469",
+        "337",
         0
       ],
       "nag_cond_video": [
@@ -851,7 +851,7 @@
   "478": {
     "inputs": {
       "lora_name": "ltx-2-19b-lora-camera-control-static.safetensors",
-      "strength_model": 0.5,
+      "strength_model": 0.75,
       "model": [
         "329",
         0
