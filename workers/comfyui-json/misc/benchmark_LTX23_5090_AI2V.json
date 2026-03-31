@@ -244,7 +244,7 @@
       "temporal_size": 4096,
       "temporal_overlap": 8,
       "samples": [
-        "125",
+        "116",
         0
       ],
       "vae": [
@@ -488,7 +488,7 @@
   "201": {
     "inputs": {
       "samples": [
-        "125",
+        "116",
         1
       ],
       "audio_vae": [
@@ -520,7 +520,7 @@
   },
   "246": {
     "inputs": {
-      "longer_edge": 768,
+      "longer_edge": 512,
       "images": [
         "165",
         0
@@ -559,7 +559,7 @@
   },
   "292": {
     "inputs": {
-      "value": 96
+      "value": 64
     },
     "class_type": "INTConstant",
     "_meta": {
@@ -568,7 +568,7 @@
   },
   "293": {
     "inputs": {
-      "value": 144
+      "value": 96
     },
     "class_type": "INTConstant",
     "_meta": {
