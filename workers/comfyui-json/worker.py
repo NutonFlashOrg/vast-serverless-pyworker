@@ -27,10 +27,10 @@ MODEL_HEALTHCHECK_ENDPOINT = os.getenv("MODEL_HEALTHCHECK_ENDPOINT", "/health")
 BENCHMARK_RUNS = int(os.getenv("BENCHMARK_RUNS", "1"))
 
 # Template / calibration lane (BENCHMARK_GENERATION_LANE on Vast) → default benchmark JSON under misc/.
-# Bot/request workload uses generation_lane keys like I2I_4090, I2V_5090_5SEC (VAST_WORKLOAD_UNITS_<LANE>).
+# Bot/request workload uses generation_lane keys like I2I_5090, I2V_5090_5SEC (VAST_WORKLOAD_UNITS_<LANE>).
 _DEFAULT_BENCHMARK_FILES: dict[str, str] = {
     # Model/template lanes (prod)
-    "FLUX2_4090": "benchmark_FLUX2_4090.json",
+    "FLUX2_5090": "benchmark_FLUX2_5090.json",
     "WAN22_5090": "benchmark_WAN22_5090_5SEC.json",
     "LTX23_5090": "benchmark_LTX23_5090_AI2V.json",
     # Benchmark-only template lanes
@@ -42,7 +42,7 @@ _DEFAULT_BENCHMARK_FILES: dict[str, str] = {
 
 # BENCHMARK_GENERATION_LANE (template/calibration) → input.generation_lane for workload_calculator / SDK cost=.
 _BENCHMARK_ENV_LANE_TO_REQUEST_GENERATION_LANE: dict[str, str] = {
-    "FLUX2_4090": "I2I_4090",
+    "FLUX2_5090": "I2I_5090",
     "WAN22_5090": "I2V_5090_5SEC",
     "WAN22_5090_5SEC": "I2V_5090_5SEC",
     "WAN22_5090_10SEC": "I2V_5090_10SEC",

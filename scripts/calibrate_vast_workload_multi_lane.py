@@ -11,7 +11,7 @@ Vast workload calibration on ONE reference GPU (boot or manual).
 
 **BENCHMARK_GENERATION_LANE → manifest key** (must exist in manifest JSON):
 
-- ``FLUX2_4090`` → ``I2I_4090``
+- ``FLUX2_5090`` → ``I2I_5090``
 - ``WAN22_5090`` / ``WAN22_5090_{5,10,15}SEC`` → matching ``I2V_5090_*`` manifest key
 - ``LTX23_5090`` / ``LTX23_5090_AI2V`` → ``LTX23_5090_AI2V``
 
@@ -168,7 +168,7 @@ def _normalize_lane(s: str) -> str:
 
 # BENCHMARK_GENERATION_LANE (template / calibration) → manifest key (= bot generation_lane for prod JSON).
 _BENCH_LANE_TO_PROD_MANIFEST_KEY: dict[str, str] = {
-    "FLUX2_4090": "I2I_4090",
+    "FLUX2_5090": "I2I_5090",
     "WAN22_5090_5SEC": "I2V_5090_5SEC",
     "WAN22_5090_10SEC": "I2V_5090_10SEC",
     "WAN22_5090_15SEC": "I2V_5090_15SEC",
