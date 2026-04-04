@@ -550,6 +550,11 @@ def transform_app_to_vast(payload: dict) -> dict:
                 raise ValueError(f"Invalid vast_workload_units={vwu!r}") from e
         if s3_block:
             out_input["s3"] = s3_block
+        s3_bucket = (job_input.get("s3_bucket") or "").strip() or (
+            s3_cfg["bucket"] if s3_cfg else ""
+        )
+        if s3_bucket:
+            out_input["s3_bucket"] = s3_bucket
         return _merge_passthrough({"input": out_input}, payload)
     finally:
         if scratch_dir is not None:
