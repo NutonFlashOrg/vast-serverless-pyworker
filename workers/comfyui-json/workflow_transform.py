@@ -555,6 +555,23 @@ def transform_app_to_vast(payload: dict) -> dict:
         )
         if s3_bucket:
             out_input["s3_bucket"] = s3_bucket
+
+        # Pass through per-request S3 overrides (payload first, env fallback)
+        # so comfy_backend can create a per-request S3 client for multi-bucket routing.
+        _s3_passthrough = {
+            "s3_endpoint_url": (
+                (job_input.get("s3_endpoint_url") or "").strip()
+                or (s3_cfg["endpoint_url"] if s3_cfg else "")
+            ),
+            "s3_region": (
+                (job_input.get("s3_region") or "").strip()
+                or (s3_cfg["region"] if s3_cfg else "")
+            ),
+            "s3_prefix": (job_input.get("s3_prefix") or "").strip(),
+        }
+        for _k, _v in _s3_passthrough.items():
+            if _v:
+                out_input[_k] = _v
         return _merge_passthrough({"input": out_input}, payload)
     finally:
         if scratch_dir is not None:
