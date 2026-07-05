@@ -59,7 +59,9 @@ def _random_reserved_vram_seed() -> int:
 
 
 # class_type values whose ``seed`` / ``*_seed`` inputs must stay in uint32 range
-_UINT32_SEED_CLASS_TYPES = frozenset({"SeedVR2VideoUpscaler"})
+# (AILab_QwenVL = the storyboard bible's VLM describe node; keep in sync with the
+# bot's workflow_utils._UINT32_SEED_CLASS_TYPES)
+_UINT32_SEED_CLASS_TYPES = frozenset({"SeedVR2VideoUpscaler", "AILab_QwenVL"})
 # class_type values whose ``seed`` is capped below uint64 (custom node validation)
 _FIFTY_BIT_SEED_CLASS_TYPES = frozenset({"ReservedVRAMSetter"})
 
