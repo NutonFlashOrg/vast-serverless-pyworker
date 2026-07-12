@@ -5,7 +5,7 @@ Fork of [vast-ai/pyworker](https://github.com/vast-ai/pyworker) with request tra
 ## Features
 
 - **Request parsing**: Accepts app format `{workflow, input_images, user_id, generation_id, ...}` and transforms to Vast `{workflow_json, s3, request_id}` before forwarding to the API wrapper.
-- **S3 input images**: Downloads `input_images` from S3 and injects base64 into `ETN_LoadImageBase64` nodes.
+- **S3 input images**: Downloads `input_images` from S3, stages them under ComfyUI `input/{run_subdir}/`, and points `LoadImage` / `LoadImageWithFilename` nodes at the staged paths (title-matched, mirroring the bot's `inject_input_urls_into_workflow`; untitled entries fill loaders positionally).
 - **Workflow patching**: Applies sageattn override, VHS_VideoCombine prefix, prompt injection.
 - **Benchmark**: Uses `misc/benchmark_<MODEL>_*.json` (see `BENCHMARK_GENERATION_LANE` in `workers/comfyui-json/worker.py`) with optional S3-backed inputs.
 

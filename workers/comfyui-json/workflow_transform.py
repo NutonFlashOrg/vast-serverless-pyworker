@@ -1,14 +1,20 @@
 """
 Transform app request format to Vast /generate/sync format.
 Aligns with bot job contract: client sends workflow + S3 refs, worker downloads,
-injects base64, patches, forwards to backend for execution, watermarking, S3 upload.
+stages files under ComfyUI's input dir, rewrites the vanilla loader nodes
+(``LoadImage`` / ``LoadImageWithFilename`` / ``LoadAudio``) to the staged paths,
+patches, forwards to backend for execution, watermarking, S3 upload.
+
+Loader matching mirrors the bot's ``inject_input_urls_into_workflow``: entries
+with a ``title`` bind to the loader node whose ``_meta.title`` matches
+(case-insensitive, trimmed); untitled entries fill remaining loader nodes in
+workflow order. Loader nodes the request doesn't claim keep their baked value.
 
 Accepts: {workflow, input_images, user_id, generation_id, watermark_enabled?, watermark_filename?, ...}
 Produces: {request_id, workflow_json, run_subdir, user_id, generation_id,
           watermark_enabled, watermark_filename, timeout, s3?: {...}} for backend.
 """
 
-import base64
 import copy
 import logging
 import os
@@ -16,7 +22,6 @@ import random
 import re
 import shutil
 import uuid
-from io import BytesIO
 from pathlib import Path
 
 logger = logging.getLogger("workflow_transform")
@@ -160,18 +165,24 @@ def randomize_workflow_seeds(workflow: dict | None) -> None:
             tin["value"] = float(_random_primitive_int_seed())
 
 
-def _validate_base64_image(b64: str, node_id: str) -> None:
-    """Validate that base64 decodes to a loadable image. Raises RuntimeError if invalid."""
-    try:
-        raw = base64.b64decode(b64)
-        if not raw:
-            raise RuntimeError(f"ETN node {node_id}: base64 decodes to empty bytes")
-        from PIL import Image
+def _validate_image_file(path: Path) -> None:
+    """Validate a downloaded file is a loadable image. Raises RuntimeError if invalid.
 
-        Image.open(BytesIO(raw)).verify()
+    Skips (with a warning) when Pillow isn't importable — validation is a
+    guard against corrupt S3 downloads, not a hard dependency; ComfyUI's
+    LoadImage will still fail loudly on a truly broken file.
+    """
+    try:
+        from PIL import Image
+    except ImportError:
+        logger.warning("Pillow unavailable; skipping validation of %s", path.name)
+        return
+    try:
+        with Image.open(path) as im:
+            im.verify()
     except Exception as e:
         raise RuntimeError(
-            f"ETN node {node_id}: invalid image data (S3 download or format issue): {e}"
+            f"input image {path.name}: invalid image data (S3 download or format issue): {e}"
         ) from e
 
 
@@ -301,8 +312,8 @@ def _first_input_audio_staged_basename(input_audio: list) -> str | None:
     return None
 
 
-def _stage_audio_for_comfy(local_audio: Path, dest_name: str, *, subfolder: str) -> None:
-    """Copy WAV to ``/app/input/{subfolder}/{dest_name}`` (``subfolder`` may contain slashes)."""
+def _stage_input_for_comfy(local_file: Path, dest_name: str, *, subfolder: str) -> None:
+    """Copy a downloaded input to ``/app/input/{subfolder}/{dest_name}`` (``subfolder`` may contain slashes)."""
     root = _comfy_input_root().resolve()
     rel = str(subfolder).strip().strip("/").replace("\\", "/")
     base = (root / rel).resolve() if rel else root
@@ -312,22 +323,102 @@ def _stage_audio_for_comfy(local_audio: Path, dest_name: str, *, subfolder: str)
     dest = (base / dest_name).resolve()
     if not str(dest).startswith(str(root)):
         raise RuntimeError("Invalid comfy input path traversal")
-    shutil.copy2(local_audio, dest)
-    logger.info("Staged audio for Comfy: %s", dest)
+    shutil.copy2(local_file, dest)
+    logger.info("Staged input for Comfy: %s", dest)
 
 
-def _comfy_load_audio_combo_value(run_subdir: str, dest_name: str) -> str:
-    """Value for ``LoadAudio.inputs.audio``: path relative to Comfy input dir, forward slashes.
+def _comfy_input_combo_value(run_subdir: str, dest_name: str) -> str:
+    """Value for a loader node's file widget (``LoadImage.inputs.image`` /
+    ``LoadAudio.inputs.audio``): path relative to Comfy input dir, forward slashes.
 
     Upstream ComfyUI resolves this with ``folder_paths.get_annotated_filepath`` →
     ``os.path.join(get_input_directory(), name)``, so ``name`` may include subdirectories
-    (see ``comfy_extras/nodes_audio.py`` ``LoadAudio`` + ``folder_paths.annotated_filepath``).
+    (see ``nodes.py`` ``LoadImage`` / ``comfy_extras/nodes_audio.py`` ``LoadAudio``
+    + ``folder_paths.annotated_filepath``).
     """
     sub = str(run_subdir or "").strip().strip("/").replace("\\", "/")
     fn = Path(dest_name).name
     if not fn or fn in (".", ".."):
-        raise ValueError("invalid audio dest_name")
+        raise ValueError("invalid input dest_name")
     return f"{sub}/{fn}" if sub else fn
+
+
+# Loader class_types whose ``inputs.<field>`` receives a user-input image path.
+# Mirrors the image entries of the bot's ``INPUT_FIELD_BY_CLASS``
+# (bot/app/domains/generation/workflow_utils.py) — keep in sync.
+_IMAGE_LOADER_FIELD_BY_CLASS: dict[str, str] = {
+    "LoadImage": "image",
+    "LoadImageWithFilename": "image",  # Flux Klein swap workflows (user-photo loader)
+}
+
+
+def _patch_load_image_nodes(
+    wf: dict,
+    downloaded_images: list[tuple[str, Path]],
+    *,
+    run_subdir: str,
+) -> None:
+    """Stage each downloaded image under Comfy ``input/{run_subdir}/`` and point
+    the workflow's image loader nodes at it.
+
+    Matching mirrors the bot's ``inject_input_urls_into_workflow``: a titled
+    entry binds to the loader node whose ``_meta.title`` equals it
+    (case-insensitive, trimmed); untitled entries fill loader nodes not claimed
+    by a title, in workflow order. Loader nodes the request doesn't claim keep
+    their baked-in value (e.g. static asset loaders).
+
+    Raises RuntimeError if any downloaded image cannot be bound to a node —
+    an unbound user input means the generation would silently ignore it.
+    """
+    if not downloaded_images:
+        return
+
+    loaders: list[tuple[str, str, dict]] = []  # (node_id, normalized_title, node)
+    for nid, node in wf.items():
+        if not isinstance(node, dict):
+            continue
+        field = _IMAGE_LOADER_FIELD_BY_CLASS.get(str(node.get("class_type") or ""))
+        if field is None:
+            continue
+        meta = node.get("_meta") if isinstance(node.get("_meta"), dict) else {}
+        title = str((meta or {}).get("title") or "").strip().lower()
+        loaders.append((nid, title, node))
+
+    claimed: set[str] = set()
+
+    def _bind(nid: str, node: dict, title: str, local: Path) -> None:
+        _validate_image_file(local)
+        _stage_input_for_comfy(local, local.name, subfolder=run_subdir)
+        field = _IMAGE_LOADER_FIELD_BY_CLASS[str(node.get("class_type"))]
+        node.setdefault("inputs", {})[field] = _comfy_input_combo_value(
+            run_subdir, local.name
+        )
+        claimed.add(nid)
+
+    # Titled entries first (exact claim), then untitled fill the remainder.
+    untitled: list[Path] = []
+    for title, local in downloaded_images:
+        t = title.strip().lower()
+        if not t:
+            untitled.append(local)
+            continue
+        target = next(
+            (row for row in loaders if row[1] == t and row[0] not in claimed), None
+        )
+        if target is None:
+            raise RuntimeError(
+                f"input_images entry titled {title!r} matches no "
+                f"LoadImage/LoadImageWithFilename node title in the workflow"
+            )
+        _bind(target[0], target[2], t, local)
+
+    for local in untitled:
+        target = next((row for row in loaders if row[0] not in claimed), None)
+        if target is None:
+            raise RuntimeError(
+                "more input_images than available image loader nodes in the workflow"
+            )
+        _bind(target[0], target[2], target[1], local)
 
 
 def _patch_load_audio_nodes(
@@ -403,7 +494,7 @@ def _patch_workflow(
     audio_local: Path | None = None,
     audio_staged_basename: str | None = None,
 ) -> dict:
-    """Patch workflow: sageattn, VHS_VideoCombine, ETN_LoadImageBase64, prompt, LoadAudio."""
+    """Patch workflow: sageattn, VHS_VideoCombine, LoadImage staging, prompt, LoadAudio."""
     wf = copy.deepcopy(workflow)
     for node in wf.values():
         if (
@@ -415,25 +506,7 @@ def _patch_workflow(
         if isinstance(node, dict) and node.get("class_type") == "VHS_VideoCombine":
             node.setdefault("inputs", {})["filename_prefix"] = f"{run_subdir}/result"
             node.setdefault("inputs", {})["save_output"] = True
-    etn_nodes: list[tuple[str, str, dict]] = []
-    for nid, node in wf.items():
-        if isinstance(node, dict) and node.get("class_type") == "ETN_LoadImageBase64":
-            title = (node.get("_meta") or {}).get("title") or ""
-            etn_nodes.append((nid, title.strip(), node))
-    img_by_title = {t: p for t, p in downloaded_images if t}
-    img_no_title = [p for t, p in downloaded_images if not t]
-    for nid, ntitle, node in etn_nodes:
-        local = img_by_title.get(ntitle) if ntitle else None
-        if local is None and img_no_title:
-            local = img_no_title.pop(0)
-        if local and local.exists():
-            b64 = base64.b64encode(local.read_bytes()).decode("utf-8")
-            _validate_base64_image(b64, nid)
-            node.setdefault("inputs", {})["image"] = b64
-    if downloaded_images:
-        for nid, _, node in etn_nodes:
-            if not (node.get("inputs") or {}).get("image"):
-                raise RuntimeError(f"Failed to inject image into ETN node {nid}")
+    _patch_load_image_nodes(wf, downloaded_images, run_subdir=run_subdir)
     prompt_title = (job_input.get("prompt_node_title") or "").strip()
     user_prompt = (job_input.get("user_prompt") or "").strip()
     if prompt_title and user_prompt:
@@ -456,8 +529,8 @@ def _patch_workflow(
                 f"or use a valid local path; got staged_basename={audio_staged_basename!r}, "
                 f"local={audio_local}"
             )
-        _stage_audio_for_comfy(audio_local, dest_name, subfolder=run_subdir)
-        audio_combo = _comfy_load_audio_combo_value(run_subdir, dest_name)
+        _stage_input_for_comfy(audio_local, dest_name, subfolder=run_subdir)
+        audio_combo = _comfy_input_combo_value(run_subdir, dest_name)
         audio_title = (job_input.get("audio_node_title") or "").strip() or None
         _patch_load_audio_nodes(wf, audio_combo, title_match=audio_title)
     return wf

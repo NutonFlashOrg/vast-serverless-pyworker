@@ -348,7 +348,7 @@
     "inputs": {
       "image": ""
     },
-    "class_type": "ETN_LoadImageBase64",
+    "class_type": "LoadImage",
     "_meta": {
       "title": "Load Image (Base64)"
     }
