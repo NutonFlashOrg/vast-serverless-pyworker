@@ -3,7 +3,7 @@
     "inputs": {
       "filename_prefix": "ComfyUI",
       "images": [
-        "117:102",
+        "9100",
         0
       ]
     },
@@ -185,7 +185,7 @@
   },
   "117:112": {
     "inputs": {
-      "text": "Nude.",
+      "text": "A photorealistic completely nude naked woman, no clothes, fully undressed, bare breasts, bare skin, same pose and same body, natural realistic skin texture, high detail.",
       "clip": [
         "117:110",
         0
@@ -222,31 +222,17 @@
     }
   },
   "117:116": {
-    "inputs": {
-      "unet_name": "flux-2-klein-9b-Q8_0.gguf"
-    },
     "class_type": "UnetLoaderGGUF",
     "_meta": {
       "title": "Unet Loader (GGUF)"
-    }
-  },
-  "117:117": {
-    "inputs": {
-      "lora_name": "Flux Klein - NSFW v2.safetensors",
-      "strength_model": 1,
-      "model": [
-        "117:116",
-        0
-      ]
     },
-    "class_type": "LoraLoaderModelOnly",
-    "_meta": {
-      "title": "Load LoRA"
+    "inputs": {
+      "unet_name": "flux-2-klein-9b-Q8_0.gguf"
     }
   },
   "117:115": {
     "inputs": {
-      "steps": 10,
+      "steps": 6,
       "width": [
         "117:105",
         0
@@ -265,7 +251,7 @@
     "inputs": {
       "cfg": 1,
       "model": [
-        "117:118",
+        "117:119",
         0
       ],
       "positive": [
@@ -282,18 +268,42 @@
       "title": "CFGGuider"
     }
   },
-  "117:118": {
+  "117:119": {
+    "class_type": "LoraLoaderModelOnly",
     "inputs": {
-      "lora_name": "klein_slider_anatomy.safetensors",
-      "strength_model": -1,
+      "lora_name": "klein_snofs_v1_3.safetensors",
+      "strength_model": 1.0,
       "model": [
-        "117:117",
+        "117:116",
         0
       ]
-    },
-    "class_type": "LoraLoaderModelOnly",
+    }
+  },
+  "9100": {
+    "class_type": "ReActorFaceSwap",
     "_meta": {
-      "title": "Load LoRA"
+      "title": "ReActor (face)"
+    },
+    "inputs": {
+      "enabled": true,
+      "input_image": [
+        "117:102",
+        0
+      ],
+      "source_image": [
+        "126",
+        0
+      ],
+      "swap_model": "inswapper_128.onnx",
+      "facedetection": "retinaface_resnet50",
+      "face_restore_model": "GPEN-BFR-512.onnx",
+      "face_restore_visibility": 1.0,
+      "codeformer_weight": 0.5,
+      "detect_gender_input": "no",
+      "detect_gender_source": "no",
+      "input_faces_index": "0",
+      "source_faces_index": "0",
+      "console_log_level": 1
     }
   }
 }

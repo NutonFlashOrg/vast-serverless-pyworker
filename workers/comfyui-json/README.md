@@ -104,7 +104,7 @@ Images will be saved locally AND uploaded to `s3://{bucket}/comfyui/{filename}`.
 
 ### Custom benchmark workflows
 
-Add JSON under `workers/comfyui-json/misc/` as **`benchmark_<MODEL>_<…>.json`** (e.g. `benchmark_FLUX2_4090.json`, `benchmark_WAN22_5090_5SEC.json`). The Vast template sets **`BENCHMARK_GENERATION_LANE`** to select which file the worker loads (see `worker._DEFAULT_BENCHMARK_FILES`). Alternatively set **`BENCHMARK_WORKFLOW_FILE`** to a filename in `misc/`.
+Add JSON under `workers/comfyui-json/misc/` as **`benchmark_<MODEL>_<…>.json`** (e.g. `benchmark_FLUX2_5090.json`, `benchmark_WAN22_5090_5SEC.json`). The Vast template sets **`BENCHMARK_GENERATION_LANE`** to select which file the worker loads (see `worker._DEFAULT_BENCHMARK_FILES`). Alternatively set **`BENCHMARK_WORKFLOW_FILE`** to a filename in `misc/`.
 
 To ensure varied generations, use the placeholder `__RANDOM_INT__` in place of static seed values where applicable.
 
