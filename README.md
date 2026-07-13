@@ -8,6 +8,7 @@ Fork of [vast-ai/pyworker](https://github.com/vast-ai/pyworker) with request tra
 - **S3 input images**: Downloads `input_images` from S3, stages them under ComfyUI `input/{run_subdir}/`, and points `LoadImage` / `LoadImageWithFilename` nodes at the staged paths (title-matched, mirroring the bot's `inject_input_urls_into_workflow`; untitled entries fill loaders positionally).
 - **Workflow patching**: Applies sageattn override, VHS_VideoCombine prefix, prompt injection.
 - **Benchmark**: Uses `misc/benchmark_<MODEL>_*.json` (see `BENCHMARK_GENERATION_LANE` in `workers/comfyui-json/worker.py`) with optional S3-backed inputs.
+- **Fixed perf / no-benchmark mode**: set `BENCHMARK_FIXED_PERF` (> 0, workload-units/sec) on the Vast template to skip the boot benchmark entirely — the worker pre-seeds the SDK's `.has_benchmark` indicator so every worker reports that same perf and no GPU generation runs on ramp. CUDA health stays gated by `entrypoint.sh` gpu-preflight + backend `assert_cuda_ready`. Suggested per-lane value: `VAST_WORKLOAD_UNITS_<LANE> / typical exec seconds`.
 
 ## Usage
 

@@ -26,6 +26,12 @@ MODEL_LOG_FILE = os.getenv("MODEL_LOG_FILE", "/app/logs/backend.log")
 MODEL_HEALTHCHECK_ENDPOINT = os.getenv("MODEL_HEALTHCHECK_ENDPOINT", "/health")
 BENCHMARK_RUNS = int(os.getenv("BENCHMARK_RUNS", "1"))
 
+# vastai-sdk skips the entire boot benchmark (warm run + timed runs) when this
+# file already holds a perf value — see serverless/server/lib/backend.py
+# ``BENCHMARK_INDICATOR_FILE`` / ``__run_benchmark``. Relative path: resolved
+# against the PyWorker CWD ($SERVER_DIR; start_server.sh cd's there).
+_SDK_BENCHMARK_INDICATOR_FILE = ".has_benchmark"
+
 # Template / calibration lane (BENCHMARK_GENERATION_LANE on Vast) → default benchmark JSON under misc/.
 # Bot/request workload uses generation_lane keys like I2I_5090, I2V_5090_5SEC (VAST_WORKLOAD_UNITS_<LANE>).
 _DEFAULT_BENCHMARK_FILES: dict[str, str] = {
@@ -254,6 +260,40 @@ def workload_calculator(payload: dict) -> float:
     )
 
 
+def _maybe_write_fixed_perf_indicator() -> None:
+    """Pre-seed the SDK's benchmark indicator so no benchmark generation runs.
+
+    When ``BENCHMARK_FIXED_PERF`` (> 0, workload-units/sec) is set on the
+    template, every worker reports that same perf and the SDK's boot benchmark
+    is skipped entirely — no GPU compute is burned proving what we already
+    know (all lane workers are same-class 5090 hardware; CUDA health is
+    already gated by entrypoint.sh gpu-preflight + backend assert_cuda_ready).
+
+    Set it per template to the lane's real request throughput so autoscaler
+    capacity math stays honest: VAST_WORKLOAD_UNITS_<LANE> / typical exec
+    seconds (e.g. flux 72.6/26s≈2.8, wan5s 1115.5/72s≈15.4, ltx 539.3/96s≈5.6).
+
+    Unset/empty → previous behavior (real benchmark). Invalid values fail the
+    worker loudly rather than silently benchmarking (cost bug would hide).
+    """
+    raw = (os.getenv("BENCHMARK_FIXED_PERF") or "").strip()
+    if not raw:
+        return
+    try:
+        perf = float(raw)
+    except ValueError as e:
+        raise SystemExit(f"Invalid BENCHMARK_FIXED_PERF={raw!r}") from e
+    if perf <= 0:
+        raise SystemExit(f"BENCHMARK_FIXED_PERF must be > 0, got {perf}")
+    indicator = Path(_SDK_BENCHMARK_INDICATOR_FILE)
+    indicator.write_text(str(perf))
+    _log.info(
+        "BENCHMARK_FIXED_PERF=%s: wrote %s — SDK boot benchmark will be skipped",
+        perf,
+        indicator.resolve(),
+    )
+
+
 worker_config = WorkerConfig(
     model_server_url=MODEL_SERVER_URL,
     model_server_port=MODEL_SERVER_PORT,
@@ -280,4 +320,5 @@ worker_config = WorkerConfig(
 )
 
 if __name__ == "__main__":
+    _maybe_write_fixed_perf_indicator()
     Worker(worker_config).run()
